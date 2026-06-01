@@ -10,7 +10,12 @@ import plotly.graph_objects as go
 import streamlit as st
 from streamlit_folium import st_folium
 
-from src.config import DATA_CANDIDATES, FATALITY_DATA_DIR, TIME_BAND_ORDER
+from src.config import (
+    DATA_CANDIDATES,
+    FATALITY_DATA_DIR,
+    REMOTE_DATA_CANDIDATES,
+    TIME_BAND_ORDER,
+)
 from src.etl import build_sample_accidents, normalize_accident_data, read_csv_flexible
 from src.fallecidos import (
     aggregate_fatalities_by_crash_class,
@@ -123,6 +128,14 @@ def _load_data_with_raw() -> tuple[pd.DataFrame, pd.DataFrame]:
                 raw = pd.read_parquet(path)
             else:
                 raw = read_csv_flexible(path)
+            return normalize_accident_data(raw), raw
+
+    for url in REMOTE_DATA_CANDIDATES:
+        try:
+            raw = read_csv_flexible(url)
+        except Exception:
+            continue
+        if not raw.empty:
             return normalize_accident_data(raw), raw
 
     sample = build_sample_accidents()
