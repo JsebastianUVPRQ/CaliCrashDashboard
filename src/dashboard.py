@@ -445,7 +445,7 @@ def _render_temporal_story(accidents: pd.DataFrame) -> None:
             gridcolor="rgba(148, 163, 184, 0.16)",
             tickformat="%d/%m",
             ticklabelmode="period",
-            nticks=min(len(daily), 2) if not daily.empty else 3,
+            nticks=min(len(daily), 8) if not daily.empty else 3,
             zeroline=False,
         )
         fig.update_yaxes(
