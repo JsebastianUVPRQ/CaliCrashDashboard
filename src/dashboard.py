@@ -86,8 +86,8 @@ def render_dashboard() -> None:
     )
     _inject_dashboard_css()
 
-    uploaded_file = st.sidebar.file_uploader("CSV de accidentes", type=["csv"])
-    accidents, raw_accidents = _load_data_with_raw(uploaded_file)
+    _render_sidebar_source_note()
+    accidents, raw_accidents = _load_data_with_raw()
     fatalities = _load_fatalities()
 
     _render_header(accidents)
@@ -115,11 +115,7 @@ def render_dashboard() -> None:
 
 
 @st.cache_data(show_spinner=False)
-def _load_data_with_raw(uploaded_file: object | None) -> tuple[pd.DataFrame, pd.DataFrame]:
-    if uploaded_file is not None:
-        raw = read_csv_flexible(uploaded_file)
-        return normalize_accident_data(raw), raw
-
+def _load_data_with_raw() -> tuple[pd.DataFrame, pd.DataFrame]:
     for path in DATA_CANDIDATES:
         if path.exists():
             suffix = path.suffix.lower()
@@ -136,6 +132,12 @@ def _load_data_with_raw(uploaded_file: object | None) -> tuple[pd.DataFrame, pd.
 @st.cache_data(show_spinner=False)
 def _load_fatalities() -> pd.DataFrame:
     return load_fatality_data(FATALITY_DATA_DIR)
+
+
+def _render_sidebar_source_note() -> None:
+    with st.sidebar:
+        st.markdown("### Fuente de datos")
+        st.caption("La aplicación usa únicamente los datos locales configurados.")
 
 
 def _render_header(accidents: pd.DataFrame) -> None:
@@ -262,10 +264,11 @@ def _render_operations_view(accidents: pd.DataFrame, show_heatmap: bool) -> None
             unsafe_allow_html=True,
         )
         has_geocoded_points = _has_geocoded_points(accidents)
-        if has_geocoded_points and len(accidents) > 1500:
+        geocoded_count = int(accidents[["latitud", "longitud"]].dropna().shape[0])
+        if has_geocoded_points and geocoded_count > 20000:
             st.info(
-                "💡 **Rendimiento:** Se muestra una muestra representativa de 1,500 marcadores individuales para "
-                "evitar ralentizar el navegador, pero el mapa de calor y las estadísticas utilizan el 100% de los datos."
+                f"💡 **Rendimiento:** Se muestran 20,000 de {geocoded_count:,} marcadores georreferenciados. "
+                "El mapa de calor y las estadísticas utilizan todos los puntos disponibles."
             )
         if has_geocoded_points:
             accident_map = build_accident_map(accidents, show_heatmap=show_heatmap)

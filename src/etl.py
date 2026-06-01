@@ -14,6 +14,7 @@ REQUIRED_COLUMNS = {
     "hora",
     "latitud",
     "longitud",
+    "coordenadas_estimadas",
     "comuna",
     "barrio",
     "tipo_accidente",
@@ -328,6 +329,12 @@ def _parse_and_validate(data: pd.DataFrame) -> pd.DataFrame:
     data["hora"] = data["hora"].fillna("00:00").astype(str)
     data["latitud"] = pd.to_numeric(data["latitud"], errors="coerce")
     data["longitud"] = pd.to_numeric(data["longitud"], errors="coerce")
+    estimated = _estimate_coordinates_from_intersections(data["interseccion"])
+    missing_coordinates = data["latitud"].isna() | data["longitud"].isna()
+    data.loc[missing_coordinates, "latitud"] = estimated.loc[missing_coordinates, "latitud"]
+    data.loc[missing_coordinates, "longitud"] = estimated.loc[missing_coordinates, "longitud"]
+    data["coordenadas_estimadas"] = False
+    data.loc[missing_coordinates & estimated["latitud"].notna(), "coordenadas_estimadas"] = True
     for column in ["comuna", "barrio", "tipo_accidente", "gravedad", "interseccion"]:
         data[column] = data[column].fillna("Sin dato").astype(str)
     data = data.dropna(subset=["fecha"])
@@ -336,6 +343,63 @@ def _parse_and_validate(data: pd.DataFrame) -> pd.DataFrame:
         "longitud"
     ].between(*CALI_LON_RANGE)
     return data[~has_coordinates | within_cali].copy()
+
+
+def _estimate_coordinates_from_intersections(addresses: pd.Series) -> pd.DataFrame:
+    """Approximate Cali WGS84 coordinates from grid-like reported intersections."""
+    coordinates = addresses.map(_estimate_coordinate_from_intersection)
+    estimated = pd.DataFrame(
+        coordinates.tolist(),
+        index=addresses.index,
+        columns=["latitud", "longitud"],
+    )
+    estimated["latitud"] = pd.to_numeric(estimated["latitud"], errors="coerce")
+    estimated["longitud"] = pd.to_numeric(estimated["longitud"], errors="coerce")
+    return estimated
+
+
+def _estimate_coordinate_from_intersection(address: object) -> tuple[float | None, float | None]:
+    text = _normalize_address_text(address)
+    if text in {"", ".", "SIN DATO", "NAN", "NONE"}:
+        return None, None
+
+    roads = re.findall(
+        r"\b(CALLE|CL|CARRERA|CRA|KRA|KR|DIAGONAL|DG|TRANSVERSAL|TV|AVENIDA|AV)\s+(\d{1,3})",
+        text,
+    )
+    if len(roads) < 2:
+        return None, None
+
+    calle = _first_road_number(roads, {"CALLE", "CL"})
+    carrera = _first_road_number(
+        roads,
+        {"CARRERA", "CRA", "KRA", "KR", "DIAGONAL", "DG", "TRANSVERSAL", "TV", "AVENIDA", "AV"},
+    )
+    if calle is None:
+        calle = _first_road_number(roads, {"TRANSVERSAL", "TV", "DIAGONAL", "DG"})
+    if calle is None or carrera is None:
+        return None, None
+
+    latitude = 3.416 + (0.00088 * calle)
+    longitude = -76.5035 - (0.00055 * carrera)
+    if not (CALI_LAT_RANGE[0] <= latitude <= CALI_LAT_RANGE[1]):
+        return None, None
+    if not (CALI_LON_RANGE[0] <= longitude <= CALI_LON_RANGE[1]):
+        return None, None
+    return round(latitude, 6), round(longitude, 6)
+
+
+def _first_road_number(roads: list[tuple[str, str]], road_types: set[str]) -> int | None:
+    for road_type, number in roads:
+        if road_type in road_types:
+            return int(number)
+    return None
+
+
+def _normalize_address_text(address: object) -> str:
+    normalized = unicodedata.normalize("NFKD", str(address).strip().upper())
+    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"\s+", " ", ascii_text)
 
 
 def _derive_time_features(data: pd.DataFrame) -> pd.DataFrame:

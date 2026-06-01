@@ -13,6 +13,7 @@ from src.config import CALI_CENTER
 def build_accident_map(
     accidents: pd.DataFrame,
     show_heatmap: bool = True,
+    max_markers: int = 20000,
 ) -> folium.Map:
     """Build an interactive map centered in Cali with accident markers."""
     crash_map = folium.Map(
@@ -50,10 +51,9 @@ def build_accident_map(
 
     marker_cluster = MarkerCluster(name="Accidentes").add_to(crash_map)
     
-    # Sample markers if dataset is large to prevent browser freeze/crash
     marker_data = geocoded_accidents
-    if len(marker_data) > 1500:
-        marker_data = marker_data.sample(n=min(1500, len(marker_data)), random_state=42)
+    if len(marker_data) > max_markers:
+        marker_data = marker_data.sample(n=max_markers, random_state=42)
 
     for accident in marker_data.itertuples(index=False):
         popup = folium.Popup(
