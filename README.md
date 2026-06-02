@@ -10,7 +10,7 @@ Dashboard interactivo en Streamlit que modela la frecuencia de accidentes de tr�
 - **Python 3.10+**
 - **Streamlit** (frontend/dashboard)
 - **Pandas, GeoPandas** (manejo de datos)
-- **Folium / PyDeck / Plotly** (visualización geoespacial interactiva)
+- **PyDeck / Folium / Plotly** (visualización geoespacial interactiva; Folium queda como fallback)
 - **Statsmodels / Scikit-learn** (modelado de frecuencias)
 - **Streamlit Cloud** (despliegue sin servidor propio)
 
@@ -42,7 +42,7 @@ la interfaz.
 │   ├── dashboard.py     # Composición de la interfaz Streamlit
 │   ├── etl.py           # Carga, limpieza y normalización de datos
 │   ├── insights.py      # Narrativa automática sobre patrones filtrados
-│   ├── mapa.py          # Construcción de mapas Folium
+│   ├── mapa.py          # Construcción del mapa WebGL y fallback Folium
 │   ├── modelo.py        # Modelo base de frecuencia esperada
 │   └── metrics.py       # Filtros, KPIs y agregaciones
 ├── data/
@@ -59,7 +59,7 @@ la interfaz.
 ## 📌 Estado del proyecto
 En desarrollo activo. La app ya permite cargar CSV desde la barra lateral,
 filtrar por comuna, fecha, franja horaria, tipo y gravedad, visualizar mapa de
-calor/clusters, KPIs compactos, insights automáticos, patrones temporales,
+calor WebGL con puntos interactivos, KPIs compactos, insights automáticos, patrones temporales,
 rankings, una frecuencia diaria esperada basada en promedios históricos
 observados y un módulo colapsable de mortalidad vial para Cali basado en
 `data/fallecidos`.

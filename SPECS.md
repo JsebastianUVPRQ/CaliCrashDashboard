@@ -24,7 +24,7 @@ graph TD
     G --> H[Visualización en Streamlit Cloud]
 ```
 
-- **Librerías clave:** pandas, geopandas, folium, streamlit-folium, plotly, statsmodels/scikit-learn.
+- **Librerías clave:** pandas, geopandas, pydeck, folium, streamlit-folium, plotly, statsmodels/scikit-learn.
 - **Modelado:** análisis de series temporales por zona (frecuencia diaria/horaria) o modelo de regresión para identificar factores de riesgo. El dashboard mostrará valores observados y, opcionalmente, predicciones.
 
 ### Módulos actuales
@@ -35,7 +35,7 @@ graph TD
 - `src/fallecidos.py`: carga CSV separados por `;` desde `data/fallecidos`, filtra registros de Cali y agrega mortalidad vial.
 - `src/insights.py`: narrativa automática de concentración por comuna, franja horaria y gravedad.
 - `src/metrics.py`: filtros, KPIs y agregaciones por comuna/franja horaria.
-- `src/mapa.py`: mapa Folium centrado en Cali con marcadores agrupados.
+- `src/mapa.py`: mapa principal WebGL con PyDeck y fallback Folium centrado en Cali.
 - `src/modelo.py`: modelo base de frecuencia esperada con promedios históricos por comuna y franja horaria.
 - `tests/`: pruebas unitarias para normalización, filtros, agregaciones y frecuencia esperada.
 
@@ -51,7 +51,7 @@ Estado implementado:
 - Filtros por comuna, franja horaria, tipo, gravedad y rango de fechas.
 - KPIs de total, promedio diario, comuna crítica e intersección crítica.
 - KPIs compactos de total, comuna crítica, hora crítica y tendencia semanal.
-- Mapa Folium con capa de calor opcional, clusters de marcadores y popups compactos.
+- Mapa WebGL con capa de calor opcional, puntos interactivos y tooltips compactos; Folium queda como fallback temporal.
 - Panel lateral derecho con insights automáticos, top comunas y franja horaria.
 - Gráficos narrativos de accidentes por hora del día y tendencia diaria.
 - Sección colapsable de mortalidad vial con KPIs, serie anual, rangos horarios y clase de accidente.

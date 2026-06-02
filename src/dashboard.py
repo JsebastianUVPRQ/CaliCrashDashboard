@@ -25,7 +25,7 @@ from src.fallecidos import (
     load_fatality_data,
 )
 from src.insights import build_insights
-from src.mapa import build_accident_map
+from src.mapa import build_accident_deck, build_accident_map
 from src.metrics import (
     aggregate_by_comuna,
     aggregate_by_hour,
@@ -280,12 +280,12 @@ def _render_operations_view(accidents: pd.DataFrame, show_heatmap: bool) -> None
         geocoded_count = int(accidents[["latitud", "longitud"]].dropna().shape[0])
         if has_geocoded_points and geocoded_count > 20000:
             st.info(
-                f"💡 **Rendimiento:** Se muestran 20,000 de {geocoded_count:,} marcadores georreferenciados. "
-                "El mapa de calor y las estadísticas utilizan todos los puntos disponibles."
+                f"**Rendimiento:** El mapa WebGL usa los {geocoded_count:,} puntos georreferenciados filtrados. "
+                "Las estadísticas también utilizan todos los registros filtrados."
             )
         if has_geocoded_points:
-            accident_map = build_accident_map(accidents, show_heatmap=show_heatmap)
-            st_folium(accident_map, use_container_width=True, height=600, key="mapa_operativo", returned_objects=[])
+            accident_deck = build_accident_deck(accidents, show_heatmap=show_heatmap)
+            st.pydeck_chart(accident_deck, use_container_width=True, height=600)
         else:
             _render_address_operations_view(accidents)
 
