@@ -22,6 +22,18 @@ MAP_COLUMNS = [
 ]
 
 DECK_MAP_STYLE = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
+CLUSTER_CELL_DEGREES = 0.006
+ZONE_LABELS = pd.DataFrame(
+    [
+        {"zona": "Norte", "latitud": 3.500, "longitud": -76.515},
+        {"zona": "Oeste / Ladera", "latitud": 3.455, "longitud": -76.590},
+        {"zona": "Centro", "latitud": 3.451, "longitud": -76.535},
+        {"zona": "Oriente", "latitud": 3.455, "longitud": -76.495},
+        {"zona": "Distrito Aguablanca", "latitud": 3.425, "longitud": -76.475},
+        {"zona": "Sur", "latitud": 3.382, "longitud": -76.532},
+        {"zona": "Pance", "latitud": 3.340, "longitud": -76.555},
+    ]
+)
 
 
 def build_accident_map(
@@ -102,6 +114,7 @@ def build_accident_deck(
 ) -> pdk.Deck:
     """Build a WebGL accident map using all filtered geocoded points."""
     map_data = prepare_deck_map_data(accidents)
+    cluster_data = prepare_cluster_map_data(map_data)
     layers: list[pdk.Layer] = []
 
     if not map_data.empty and show_heatmap:
@@ -117,6 +130,7 @@ def build_accident_deck(
                 intensity=1,
                 threshold=0.05,
                 pickable=False,
+                opacity=0.32,
             )
         )
 
@@ -126,18 +140,65 @@ def build_accident_deck(
                 "ScatterplotLayer",
                 data=map_data,
                 get_position="[longitud, latitud]",
-                get_fill_color="color",
-                get_line_color=[15, 23, 42, 180],
-                get_radius=45,
-                radius_min_pixels=3,
-                radius_max_pixels=16,
-                line_width_min_pixels=1,
-                stroked=True,
+                get_fill_color="point_color",
+                get_radius=26,
+                radius_min_pixels=1,
+                radius_max_pixels=5,
+                stroked=False,
                 filled=True,
                 pickable=True,
                 auto_highlight=True,
             )
         )
+
+    if not cluster_data.empty:
+        layers.extend(
+            [
+                pdk.Layer(
+                    "ScatterplotLayer",
+                    data=cluster_data,
+                    get_position="[longitud, latitud]",
+                    get_fill_color="cluster_color",
+                    get_line_color=[248, 250, 252, 195],
+                    get_radius="cluster_radius",
+                    radius_min_pixels=12,
+                    radius_max_pixels=52,
+                    line_width_min_pixels=1,
+                    stroked=True,
+                    filled=True,
+                    pickable=True,
+                    auto_highlight=True,
+                ),
+                pdk.Layer(
+                    "TextLayer",
+                    data=cluster_data[cluster_data["accidentes"].ge(8)],
+                    get_position="[longitud, latitud]",
+                    get_text="cluster_label",
+                    get_color=[15, 23, 42, 245],
+                    get_size=13,
+                    get_alignment_baseline="'center'",
+                    get_text_anchor="'middle'",
+                    pickable=False,
+                ),
+            ]
+        )
+
+    layers.append(
+        pdk.Layer(
+            "TextLayer",
+            data=ZONE_LABELS,
+            get_position="[longitud, latitud]",
+            get_text="zona",
+            get_color=[226, 232, 240, 220],
+            get_size=15,
+            get_alignment_baseline="'center'",
+            get_text_anchor="'middle'",
+            get_background_color=[15, 23, 42, 150],
+            background=True,
+            background_padding=[7, 4],
+            pickable=False,
+        )
+    )
 
     return pdk.Deck(
         layers=layers,
@@ -150,11 +211,8 @@ def build_accident_deck(
         map_style=DECK_MAP_STYLE,
         tooltip={
             "html": (
-                "<b>{tipo_accidente}</b><br/>"
-                "{fecha} · {hora}<br/>"
-                "Comuna <b>{comuna}</b><br/>"
-                "Barrio: {barrio}<br/>"
-                "Gravedad: {gravedad}"
+                "<b>{tooltip_title}</b><br/>"
+                "{tooltip_detail}"
             ),
             "style": {
                 "backgroundColor": "rgba(15, 23, 42, 0.94)",
@@ -197,7 +255,70 @@ def prepare_deck_map_data(accidents: pd.DataFrame) -> pd.DataFrame:
         map_data[column] = map_data[column].fillna("Sin dato").astype(str)
 
     map_data["color"] = map_data["gravedad"].map(_severity_color).tolist()
-    return map_data[[*MAP_COLUMNS, "color"]]
+    map_data["point_color"] = map_data["gravedad"].map(_point_color).tolist()
+    map_data["tooltip_title"] = map_data["tipo_accidente"]
+    map_data["tooltip_detail"] = (
+        map_data["fecha"]
+        + " · "
+        + map_data["hora"]
+        + "<br/>Comuna <b>"
+        + map_data["comuna"]
+        + "</b><br/>Barrio: "
+        + map_data["barrio"]
+        + "<br/>Gravedad: "
+        + map_data["gravedad"]
+    )
+    return map_data[
+        [
+            *MAP_COLUMNS,
+            "color",
+            "point_color",
+            "tooltip_title",
+            "tooltip_detail",
+        ]
+    ]
+
+
+def prepare_cluster_map_data(map_data: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate accidents into readable fixed-grid clusters for the default view."""
+    columns = [
+        "latitud",
+        "longitud",
+        "accidentes",
+        "cluster_label",
+        "cluster_radius",
+        "cluster_color",
+        "tooltip_title",
+        "tooltip_detail",
+    ]
+    if map_data.empty:
+        return pd.DataFrame(columns=columns)
+
+    clustered = map_data.assign(
+        lat_cell=(map_data["latitud"] / CLUSTER_CELL_DEGREES).round(),
+        lon_cell=(map_data["longitud"] / CLUSTER_CELL_DEGREES).round(),
+    )
+    grouped = (
+        clustered.groupby(["lat_cell", "lon_cell"], as_index=False)
+        .agg(
+            latitud=("latitud", "mean"),
+            longitud=("longitud", "mean"),
+            accidentes=("latitud", "size"),
+        )
+        .sort_values("accidentes", ascending=False)
+        .reset_index(drop=True)
+    )
+    grouped["cluster_label"] = grouped["accidentes"].map(_format_cluster_label)
+    grouped["cluster_radius"] = grouped["accidentes"].map(_cluster_radius)
+    grouped["cluster_color"] = grouped["accidentes"].map(_cluster_color).tolist()
+    grouped["tooltip_title"] = grouped["accidentes"].map(
+        lambda count: f"{count:,} accidentes"
+    )
+    grouped["tooltip_detail"] = (
+        "Cluster territorial de aproximadamente 650 m. "
+        "Acercar el zoom separa los puntos individuales de esta zona."
+    )
+    return grouped[columns]
 
 
 def _add_missing_coordinates_notice(crash_map: folium.Map, total_records: int) -> None:
@@ -268,3 +389,28 @@ def _severity_color(value: object) -> list[int]:
     if any(token in severity for token in ["daño", "dano", "material"]):
         return [56, 189, 248, 190]
     return [148, 163, 184, 170]
+
+
+def _point_color(value: object) -> list[int]:
+    red, green, blue, _ = _severity_color(value)
+    return [red, green, blue, 115]
+
+
+def _cluster_radius(count: int) -> int:
+    return int(min(980, max(120, 75 + (float(count) ** 0.5 * 18))))
+
+
+def _cluster_color(count: int) -> list[int]:
+    if count >= 1000:
+        return [239, 68, 68, 205]
+    if count >= 350:
+        return [245, 158, 11, 205]
+    if count >= 100:
+        return [34, 197, 94, 190]
+    return [56, 189, 248, 180]
+
+
+def _format_cluster_label(count: int) -> str:
+    if count >= 1000:
+        return f"{count / 1000:.1f}k"
+    return str(count)

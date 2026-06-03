@@ -223,7 +223,7 @@ def _render_filters(accidents: pd.DataFrame) -> DashboardFilters:
             max_value=max_date,
         )
 
-        show_heatmap = st.toggle("Mapa de calor", value=True)
+        show_heatmap = st.toggle("Densidad suavizada", value=False)
 
     return DashboardFilters(
         comunas=selected_comunas,
@@ -280,8 +280,8 @@ def _render_operations_view(accidents: pd.DataFrame, show_heatmap: bool) -> None
         geocoded_count = int(accidents[["latitud", "longitud"]].dropna().shape[0])
         if has_geocoded_points and geocoded_count > 20000:
             st.info(
-                f"**Rendimiento:** El mapa WebGL usa los {geocoded_count:,} puntos georreferenciados filtrados. "
-                "Las estadísticas también utilizan todos los registros filtrados."
+                f"**Mapa WebGL:** los clusters resumen {geocoded_count:,} puntos georreferenciados filtrados. "
+                "Al acercar el zoom, los puntos individuales se separan progresivamente."
             )
         if has_geocoded_points:
             accident_deck = build_accident_deck(accidents, show_heatmap=show_heatmap)
