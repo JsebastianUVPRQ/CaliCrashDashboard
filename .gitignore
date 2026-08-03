@@ -7,25 +7,25 @@ bin-release/
 # Other files and folders
 .settings/
 # virtual environment folder
-venv/
+# venv/
 __pycache__/
 .pytest_cache/
-*.pyc
-.streamlit/secrets.toml
+# *.pyc
+# .streamlit/secrets.toml
 
 # Data snapshots
-data/raw/**
-data/processed/**
-data/fallecidos/**
+# data/raw/**
+# data/processed/**
+# data/fallecidos/**
 
-!data/raw/.gitkeep
-!data/processed/.gitkeep
-!data/fallecidos/.gitkeep
+# !data/raw/.gitkeep
+# !data/processed/.gitkeep
+# !data/fallecidos/.gitkeep
 
 # Executables
-*.swf
-*.air
-*.ipa
+# *.swf
+# *.air
+# *.ipa
 
 # Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`
 # should NOT be excluded
