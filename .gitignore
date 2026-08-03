@@ -5,12 +5,12 @@
 # [Bb]in/
 
 # Other files and folders
-# .settings/
-# virtual environment folder
-# venv/
+.settings/
+virtual environment folder
+venv/
 __pycache__/
 .pytest_cache/
-# *.pyc
+*.pyc
 # .streamlit/secrets.toml
 
 # Data snapshots
