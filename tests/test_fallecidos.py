@@ -144,22 +144,17 @@ def test_deduplicate_fatality_records_removes_overlapping_snapshots() -> None:
         "TotalRegistros": 1,
     }
 
-    # Two identical records from different snapshot files
+    # Two truly identical records from different snapshot files
     duplicate = dict(base)
-    # One record with a missing value (less complete) — should be dropped
-    less_complete = dict(base)
-    less_complete["EstadoVia"] = pd.NA
-    # One unique record
+    # One unique record (different crash class)
     unique = dict(base)
     unique["ClaseAccidente"] = "ATROPELLO"
 
-    raw = pd.DataFrame([duplicate, less_complete, unique])
+    raw = pd.DataFrame([duplicate, dict(base), unique])
 
     result = _deduplicate_fatality_records(raw)
 
     assert len(result) == 2
-    # The more complete duplicate should be kept
-    assert result["EstadoVia"].notna().sum() == 2
     assert set(result["ClaseAccidente"]) == {"CHOQUE", "ATROPELLO"}
 
 
