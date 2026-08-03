@@ -103,9 +103,9 @@ ACCIDENT_SCHEMA = Schema(
         ColumnSpec("tipo_accidente", "object", description="Accident type"),
         ColumnSpec("gravedad", "object", description="Severity level"),
         ColumnSpec("interseccion", "object", description="Intersection or address"),
-        ColumnSpec("franja_horaria", "object", description="Derived time band"),
-        ColumnSpec("dia_semana", "object", description="Derived weekday"),
-        ColumnSpec("mes", "object", description="Derived month (YYYY-MM)"),
+        ColumnSpec("franja_horaria", "object", required=False, description="Derived time band"),
+        ColumnSpec("dia_semana", "object", required=False, description="Derived weekday"),
+        ColumnSpec("mes", "object", required=False, description="Derived month (YYYY-MM)"),
     ),
 )
 

@@ -1,31 +1,32 @@
 # Build and Release Folders
-# bin-debug/
-# bin-release/
-# [Oo]bj/
-# [Bb]in/
+bin-debug/
+bin-release/
+[Oo]bj/
+[Bb]in/
 
 # Other files and folders
 .settings/
-virtual environment folder
 venv/
 __pycache__/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 *.pyc
-# .streamlit/secrets.toml
+.streamlit/secrets.toml
 
-# Data snapshots
-# data/raw/**
-# data/processed/**
-# data/fallecidos/**
+# Data snapshots (large, regenerable)
+data/raw/**
+data/processed/**
+data/fallecidos/**
 
-# !data/raw/.gitkeep
-# !data/processed/.gitkeep
-# !data/fallecidos/.gitkeep
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/fallecidos/.gitkeep
 
 # Executables
-# *.swf
-# *.air
-# *.ipa
+*.swf
+*.air
+*.ipa
 
 # Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`
 # should NOT be excluded
