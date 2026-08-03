@@ -25,6 +25,36 @@ FATALITY_COLUMNS = {
     "TotalRegistros",
 }
 
+# Columns that uniquely identify a fatality event. The three snapshot files
+# (datos-desestructurados_a/b/c.csv) overlap significantly; records appearing
+# in multiple snapshots must be deduplicated to avoid inflating counts.
+FATALITY_DEDUP_KEY = [
+    "Departamento",
+    "Municipio",
+    "AnoHecho",
+    "MesOCurrencia",
+    "DiaOcurrencia",
+    "Rango3horas",
+    "Rango6horas",
+    "Sexo",
+    "RangoEdad",
+    "ClaseAccidente",
+    "Hipotesis",
+    "DiagnosticoTopografico",
+    "CondicionVictima",
+    "ActorVial",
+    "UsuarioVia",
+    "Zona",
+    "ObjetoColision",
+    "TipoVehiculoGrupo",
+    "TipoServicio",
+    "EstadoVia",
+    "ActividadVictima",
+    "CausaMuerte",
+    "CondicionLugar",
+    "Muerte30Dias",
+]
+
 MONTHS = {
     "ENERO": 1,
     "FEBRERO": 2,
@@ -158,7 +188,49 @@ def _read_fatality_files(files: Iterable[Path]) -> pd.DataFrame:
     ]
     if not frames:
         return pd.DataFrame()
-    return pd.concat(frames, ignore_index=True)
+    combined = pd.concat(frames, ignore_index=True)
+    return _deduplicate_fatality_records(combined)
+
+
+def _deduplicate_fatality_records(data: pd.DataFrame) -> pd.DataFrame:
+    """Remove records that appear in multiple snapshot files.
+
+    The fatality CSVs are partial snapshots of the same underlying dataset
+    taken at different times. A single fatality event can appear in several
+    files with identical identifying fields. This function keeps the most
+    complete record for each event (fewest missing values), preferring the
+    first occurrence on ties.
+
+    Args:
+        data: Raw concatenated fatality records from all snapshot files.
+
+    Returns:
+        A deduplicated DataFrame with the same columns as ``data``.
+    """
+    if data.empty:
+        return data
+
+    available_key = [col for col in FATALITY_DEDUP_KEY if col in data.columns]
+    if not available_key:
+        return data
+
+    # Count missing values per row to prefer the most complete record.
+    completeness = data[available_key].isna().sum(axis=1)
+    data = data.assign(_completeness=completeness)
+
+    # Fill missing values with a sentinel so records that differ only by
+    # missing fields still match during deduplication.
+    dedup_view = data[available_key].fillna("__MISSING__")
+
+    deduplicated = (
+        data.assign(_dedup_key=dedup_view.astype(str).agg("|".join, axis=1))
+        .sort_values("_completeness")
+        .drop_duplicates(subset="_dedup_key", keep="first")
+        .sort_index()
+        .drop(columns=["_completeness", "_dedup_key"])
+        .reset_index(drop=True)
+    )
+    return deduplicated
 
 
 def _weighted_count(data: pd.DataFrame, column: str) -> pd.DataFrame:

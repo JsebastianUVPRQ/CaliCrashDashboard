@@ -1,6 +1,7 @@
 import pandas as pd
 
 from src.fallecidos import (
+    _deduplicate_fatality_records,
     aggregate_fatalities_by_crash_class,
     aggregate_fatalities_by_time_range,
     aggregate_fatalities_by_year,
@@ -111,3 +112,58 @@ def test_normalize_fatality_data_extracts_weekday_name_without_prefix() -> None:
 
     assert result.loc[0, "dia_semana"] == "domingo"
     assert result.loc[1, "dia_semana"] == "sábado"
+
+
+def test_deduplicate_fatality_records_removes_overlapping_snapshots() -> None:
+    """Records appearing in multiple snapshot files must be deduplicated."""
+    base = {
+        "Departamento": "VALLE DEL CAUCA",
+        "Municipio": "CALI",
+        "AnoHecho": 2024,
+        "MesOCurrencia": "11.NOVIEMBRE",
+        "DiaOcurrencia": "7.DOMINGO",
+        "Rango3horas": "21:00 A 23:59",
+        "Rango6horas": "18:00 A 23:59",
+        "Sexo": "HOMBRE",
+        "RangoEdad": "[20,25)",
+        "ClaseAccidente": "CHOQUE",
+        "Hipotesis": "SIN INFORMACIÓN",
+        "DiagnosticoTopografico": "TRAUMA CRANEANO",
+        "CondicionVictima": "CONDUCTOR",
+        "ActorVial": "USUARIO DE MOTO",
+        "UsuarioVia": "USUARIO DE MOTO",
+        "Zona": "URBANA",
+        "ObjetoColision": "MOTOCICLETA",
+        "TipoVehiculoGrupo": "MOTOCICLETA",
+        "TipoServicio": "PARTICULAR",
+        "EstadoVia": "BUENO",
+        "ActividadVictima": "SIN INFORMACIÓN",
+        "CausaMuerte": "CONTUNDENTE",
+        "CondicionLugar": "NORMAL",
+        "Muerte30Dias": "SI",
+        "TotalRegistros": 1,
+    }
+
+    # Two identical records from different snapshot files
+    duplicate = dict(base)
+    # One record with a missing value (less complete) — should be dropped
+    less_complete = dict(base)
+    less_complete["EstadoVia"] = pd.NA
+    # One unique record
+    unique = dict(base)
+    unique["ClaseAccidente"] = "ATROPELLO"
+
+    raw = pd.DataFrame([duplicate, less_complete, unique])
+
+    result = _deduplicate_fatality_records(raw)
+
+    assert len(result) == 2
+    # The more complete duplicate should be kept
+    assert result["EstadoVia"].notna().sum() == 2
+    assert set(result["ClaseAccidente"]) == {"CHOQUE", "ATROPELLO"}
+
+
+def test_deduplicate_fatality_records_handles_empty_data() -> None:
+    result = _deduplicate_fatality_records(pd.DataFrame())
+
+    assert result.empty
