@@ -47,6 +47,8 @@ COLUMN_ALIASES = {
     "vehiculo": "tipo_vehiculo",
     "tipo_vehiculo_1": "tipo_vehiculo",
     "tipo_de_vehiculo": "tipo_vehiculo",
+    "tipo_vehiculos_implicados": "tipo_vehiculo",
+    "tipo_de_vehiculos_implicados": "tipo_vehiculo",
     "tipo_vehiculo_involucrado": "tipo_vehiculo",
     "vehiculo_involucrado": "tipo_vehiculo",
     "clase_vehiculo": "tipo_vehiculo",
@@ -353,6 +355,26 @@ def _parse_and_validate(data: pd.DataFrame) -> pd.DataFrame:
         "interseccion",
     ]:
         data[column] = data[column].fillna("Sin dato").astype(str)
+
+    # Normalize multi-vehicle fields: keep only the first implicated vehicle.
+    # Raw values look like "AUTOMOVIL,AUTOMOVIL" or "MOTOCICLETA" or ".".
+    if "tipo_vehiculo" in data.columns:
+        data["tipo_vehiculo"] = (
+            data["tipo_vehiculo"]
+            .str.split(",")
+            .str[0]
+            .str.strip()
+            .str.replace('"', "", regex=False)
+            .str.title()
+            .replace({"": "Sin dato", ".": "Sin dato"})
+        )
+        data["tipo_vehiculo"] = data["tipo_vehiculo"].where(
+            data["tipo_vehiculo"].str.lower().isin(["nan", "sin dato"]),
+            data["tipo_vehiculo"],
+        )
+        data["tipo_vehiculo"] = data["tipo_vehiculo"].replace(
+            "Sin Dato", "Sin dato"
+        )
     data = data.dropna(subset=["fecha"])
     has_coordinates = data["latitud"].notna() & data["longitud"].notna()
     within_cali = data["latitud"].between(*CALI_LAT_RANGE) & data[
@@ -370,13 +392,40 @@ def _derive_time_features(data: pd.DataFrame) -> pd.DataFrame:
 
 
 def _assign_time_band_vectorized(hours: pd.Series) -> pd.Series:
-    parsed = pd.to_datetime(hours, format="%H:%M", errors="coerce")
+    text_hours = hours.astype(str).str.strip()
+
+    # 1) HH:MM / H:MM formats (e.g. "07:30", "0:49")
+    parsed = pd.to_datetime(text_hours, format="%H:%M", errors="coerce")
     hour_numeric = parsed.dt.hour
-    mask = hour_numeric.isna()
-    if mask.any():
-        numeric = pd.to_numeric(hours[mask].astype(str).str.strip(), errors="coerce")
+
+    # 2) HH:MM:SS / H:MM:SS formats (e.g. "7:31:17", "12:24:22")
+    missing = hour_numeric.isna()
+    if missing.any():
+        hour_extracted = text_hours[missing].str.extract(
+            r"^(\d{1,2}):\d{2}(?::\d{2})?$"
+        )[0]
+        hours_with_seconds = pd.to_numeric(hour_extracted, errors="coerce")
         hour_numeric = hour_numeric.copy()
-        hour_numeric[mask] = numeric % 24
+        hour_numeric[missing] = hours_with_seconds
+
+    # 3) Excel serial decimals with comma separator (e.g. "0,036111111" = 00:52)
+    #    Only values < 1.0 represent fractions of a day; integers are hours.
+    missing = hour_numeric.isna()
+    if missing.any():
+        decimal_text = text_hours[missing].str.replace(",", ".", regex=False)
+        excel_frac = pd.to_numeric(decimal_text, errors="coerce")
+        is_day_fraction = excel_frac.between(0, 1, inclusive="left")
+        excel_hours = (excel_frac * 24) % 24
+        hour_numeric = hour_numeric.copy()
+        hour_numeric[missing] = excel_hours.where(is_day_fraction)
+
+    # 4) Plain integers (e.g. "21")
+    missing = hour_numeric.isna()
+    if missing.any():
+        numeric = pd.to_numeric(text_hours[missing], errors="coerce")
+        hour_numeric = hour_numeric.copy()
+        hour_numeric[missing] = numeric % 24
+
     hour_numeric = hour_numeric.fillna(-1)
     result = pd.cut(
         hour_numeric,
