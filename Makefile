@@ -20,6 +20,17 @@ format:
 	$(PYTHON) -m black --line-length 100 src/ tests/
 	$(PYTHON) -m ruff check --fix src/ tests/
 
+lint-js:
+	npx eslint .
+
+lint-html:
+	npx htmlhint "**/*.html" || true
+
+lint-css:
+	npx stylelint "**/*.css" || true
+
+lint-all: lint lint-js lint-html lint-css
+
 pipeline:
 	$(PYTHON) scripts/run_pipeline.py
 

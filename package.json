@@ -1,0 +1,37 @@
+{
+  "name": "vidas-en-la-via-atlas-de-siniestralidad-calicrashdashboard",
+  "version": "1.0.0",
+  "description": "Dashboard interactivo en Streamlit que modela la frecuencia de accidentes de tránsito en Cali, basado en datos abiertos de la Secretaría de Movilidad. La aplicación muestra un mapa con las zonas de mayor concentración de siniestros, permitiendo filtrar por comuna, intersección y franja horaria.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "lint": "eslint . && htmlhint **/*.html && stylelint **/*.css",
+    "lint:js": "eslint .",
+    "lint:html": "htmlhint **/*.html",
+    "lint:css": "stylelint **/*.css",
+    "lint:fix": "eslint . --fix && stylelint **/*.css --fix"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JsebastianUVPRQ/Vidas-en-la-Via-Atlas-de-Siniestralidad-CaliCrashDashboard.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/JsebastianUVPRQ/Vidas-en-la-Via-Atlas-de-Siniestralidad-CaliCrashDashboard/issues"
+  },
+  "homepage": "https://github.com/JsebastianUVPRQ/Vidas-en-la-Via-Atlas-de-Siniestralidad-CaliCrashDashboard#readme",
+  "devDependencies": {
+    "eslint": "^9.39.5",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-security": "^4.0.1",
+    "htmlhint": "^1.9.2",
+    "stylelint": "^17.14.1",
+    "stylelint-config-standard": "^40.0.0"
+  }
+}
