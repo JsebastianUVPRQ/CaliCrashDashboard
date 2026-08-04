@@ -8,11 +8,11 @@
     "test": "tests"
   },
   "scripts": {
-    "lint": "eslint . && htmlhint **/*.html && stylelint **/*.css",
+    "lint": "eslint . && htmlhint \"**/*.html\" && stylelint \"**/*.css\"",
     "lint:js": "eslint .",
-    "lint:html": "htmlhint **/*.html",
-    "lint:css": "stylelint **/*.css",
-    "lint:fix": "eslint . --fix && stylelint **/*.css --fix"
+    "lint:html": "htmlhint \"**/*.html\"",
+    "lint:css": "stylelint \"**/*.css\"",
+    "lint:fix": "eslint . --fix && stylelint \"**/*.css\""
   },
   "repository": {
     "type": "git",
