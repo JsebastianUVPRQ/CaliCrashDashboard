@@ -39,6 +39,7 @@
 ## 🗺 Datos geoespaciales
 - Usar `geopandas` y archivos shapefile de comunas de Cali (descargar de IDESC o repositorio auxiliar).
 - Las coordenadas de accidentes se asumen en WGS84 (EPSG:4326). Convertir a proyección métrica para cálculos de áreas si es necesario.
+- La georreferenciación de intersecciones vive en `src/geocode.py` (anclas OSM + cuadrícula afín por zona + diccionario de lugares). Si cambian las fuentes o la normalización, regenerar con `scripts/build_processed_data.py` y validar cobertura con `tests/test_geocode.py`.
 
 ## 🔐 MCP (Model Context Protocol)
 - Si el agente necesita acceder a la fuente de datos dinámicamente, puede configurarse un servidor MCP local (ver `.mcp.json`). Actualmente el proyecto no lo requiere, pero está preparado para futuras integraciones.

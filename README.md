@@ -7,6 +7,7 @@ Dashboard interactivo en Streamlit que modela la frecuencia de accidentes de tr�
 - **Pipeline ETL reproducible** — Extract → Validate → Transform → Load con contratos de datos, reportes de calidad y manifiesto de linaje
 - **Modelo estadístico Poisson GLM** — Coeficientes, errores estándar, p-valores, intervalos de confianza, diagnóstico de sobre-dispersión
 - **Mapa interactivo** — Mapa de calor, clusters de marcadores y popups con detalle
+- **Georreferenciación en 3 capas** — Anclas OSM exactas, cuadrícula afín por zona cardinal y diccionario de lugares para las intersecciones sin coordenadas (~80% de cobertura total)
 - **KPIs y narrativas** — Indicadores clave, insights automáticos y patrones temporales
 - **Mortalidad vial** — Análisis de fallecidos con agregaciones por año, horario y clase de siniestro
 
@@ -28,8 +29,8 @@ Dashboard interactivo en Streamlit que modela la frecuencia de accidentes de tr�
 python -m venv venv
 venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 
-# 2. Ejecutar el pipeline ETL
-venv\Scripts\python.exe scripts\run_pipeline.py
+# 2. Ejecutar el pipeline de datos (ETL + geocodificación)
+venv\Scripts\python.exe scripts\build_processed_data.py
 
 # 3. Lanzar el dashboard
 venv\Scripts\python.exe -m streamlit run app.py
@@ -62,6 +63,7 @@ make dashboard  # Lanzar dashboard
 │   ├── dashboard.py          # Composición de la interfaz Streamlit
 │   ├── etl.py                # Carga y normalización de accidentes
 │   ├── fallecidos.py         # Carga y agregación de mortalidad
+│   ├── geocode.py            # Georreferenciación de intersecciones
 │   ├── insights.py           # Narrativa automática
 │   ├── mapa.py               # Mapas Folium
 │   ├── metrics.py            # KPIs, filtros y agregaciones
@@ -69,7 +71,8 @@ make dashboard  # Lanzar dashboard
 │   ├── pipeline/             # Pipeline ETL (extract, validate, transform, load)
 │   └── stats/                # Modelo estadístico Poisson GLM
 ├── scripts/
-│   └── run_pipeline.py       # CLI del pipeline ETL
+│   ├── build_processed_data.py  # ETL: limpia y georreferencia los datasets
+│   └── build_lugares.py         # Genera data/processed/lugares_geocodificados.csv
 ├── docs/
 │   ├── data_dictionary.md    # Diccionario de datos
 │   ├── methodology.md        # Metodología estadística
@@ -79,7 +82,8 @@ make dashboard  # Lanzar dashboard
 │   ├── fallecidos/           # Snapshot de fallecidos (gitignored)
 │   ├── raw/                  # Datos crudos (gitignored)
 │   └── processed/            # Datos procesados (gitignored)
-├── notebooks/                # Análisis exploratorio
+├── notebooks/
+│   └── fetch_anchors.py      # Descarga one-shot de anclas OSM (14k cruces)
 ├── tests/                    # Pruebas unitarias
 ├── AGENTS.md                 # Instrucciones para agentes de IA
 └── SPECS.md                  # Especificaciones técnicas

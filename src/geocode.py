@@ -362,7 +362,7 @@ def calibrate_grid(anchors: pd.DataFrame) -> GridModel:
     bounds: dict[str, tuple[float, float, float, float]] = {}
     for zone, sub in frame.groupby("zone"):
         fitted, beta_lat, beta_lon = _robust_affine(sub)
-        if beta_lat is None:
+        if fitted is None or beta_lat is None or beta_lon is None:
             continue
         zones[zone] = (beta_lat, beta_lon)
         bounds[zone] = _fit_bounds(fitted)

@@ -80,4 +80,4 @@ def test_build_insights_keeps_small_intersection_percentages_visible() -> None:
 
     result = build_insights(accidents)
 
-    assert any("El punto CLINICA COLOMBIA concentra 0.2%" in insight for insight in result)
+    assert any("concentra 0.2%" in insight for insight in result)

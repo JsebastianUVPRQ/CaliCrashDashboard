@@ -21,10 +21,8 @@ from src.fallecidos import (
 )
 from src.mapa import build_accident_map
 from src.metrics import (
-    aggregate_by_comuna,
     aggregate_by_hour,
     aggregate_by_intersection,
-    aggregate_by_time_band,
     aggregate_by_vehicle_and_severity,
     aggregate_by_vehicle_type,
     build_kpis,
@@ -87,8 +85,7 @@ def render_dashboard() -> None:
     )
     _inject_dashboard_css()
 
-    uploaded_file = st.sidebar.file_uploader("CSV de accidentes", type=["csv"])
-    accidents, raw_accidents = _load_data_with_raw(uploaded_file)
+    accidents, raw_accidents = _load_data_with_raw()
     fatalities = _load_fatalities()
 
     _render_header(accidents)
@@ -117,11 +114,7 @@ def render_dashboard() -> None:
 
 
 @st.cache_data(show_spinner=False)
-def _load_data_with_raw(uploaded_file: object | None) -> tuple[pd.DataFrame, pd.DataFrame]:
-    if uploaded_file is not None:
-        raw = read_csv_flexible(uploaded_file)
-        return normalize_accident_data(raw), raw
-
+def _load_data_with_raw() -> tuple[pd.DataFrame, pd.DataFrame]:
     for path in DATA_CANDIDATES:
         if path.exists():
             suffix = path.suffix.lower()
@@ -274,8 +267,8 @@ def _render_hotspots_section(accidents: pd.DataFrame, show_heatmap: bool) -> Non
         _render_empty_state(
             "No hay direcciones válidas para analizar cruces peligrosos.",
             [
-                "Cargar un archivo con la columna de dirección o intersección.",
-                "O revisar los filtros actuales.",
+                "Revisar los filtros actuales.",
+                "O ampliar la cobertura de direcciones en la fuente de datos.",
             ],
         )
         return

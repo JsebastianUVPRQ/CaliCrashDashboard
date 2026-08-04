@@ -30,9 +30,12 @@ graph TD
 ### Módulos actuales
 - `app.py`: entrada Streamlit ligera.
 - `src/config.py`: configuración compartida de rutas, centro del mapa y orden de categorías.
-- `src/dashboard.py`: composición de la interfaz, carga de CSV desde la barra lateral, filtros, KPIs, visualizaciones y descarga.
+- `src/dashboard.py`: composición de la interfaz, carga automática desde `data/processed/`, filtros, KPIs, visualizaciones y descarga.
 - `src/etl.py`: carga CSV desde `data/processed/accidentes_limpios.csv` o `data/raw/accidentes.csv`, normaliza columnas (incluyendo `tipo_vehiculo`) y deriva `franja_horaria`, `dia_semana` y `mes`.
 - `src/fallecidos.py`: carga CSV separados por `;` desde `data/fallecidos`, filtra registros de Cali y agrega mortalidad vial.
+- `src/geocode.py`: georreferencia el campo `interseccion` con tres capas — ancla OSM exacta, cuadrícula afín calibrada por zona cardinal y diccionario de lugares.
+- `scripts/build_processed_data.py`: ETL que limpia las fuentes crudas, geocodifica las intersecciones y escribe `accidentes_limpios.parquet` y `geocoded_intersections.parquet`.
+- `notebooks/fetch_anchors.py`: descarga one-shot de las anclas OSM (`data/processed/anclas_osm.csv`).
 - `src/insights.py`: narrativa automática de concentración por comuna, franja horaria y gravedad.
 - `src/metrics.py`: filtros, KPIs y agregaciones por comuna, franja horaria, tipo de vehículo y vehículo × gravedad.
 - `src/mapa.py`: mapa Folium centrado en Cali con marcadores agrupados.
@@ -47,7 +50,7 @@ graph TD
 5. **Opciones de descarga** de datos filtrados.
 
 Estado implementado:
-- Carga automática desde `data/processed/accidentes_limpios.csv`, `data/raw/accidentes.csv` o CSV subido en la barra lateral.
+- Carga automática desde `data/processed/accidentes_limpios.parquet` (con coordenadas georreferenciadas) con fallback a otros candidatos o datos de muestra.
 - Filtros por comuna, franja horaria, tipo, gravedad y rango de fechas.
 - KPIs de total, promedio diario, comuna crítica e intersección crítica.
 - KPIs compactos de total, comuna crítica, hora crítica y tendencia semanal.
@@ -60,6 +63,7 @@ Estado implementado:
 - Tabla técnica colapsada de frecuencia diaria esperada por comuna y franja horaria.
 
 ## 5. Procesamiento de datos
+- Georreferenciación de intersecciones sin coordenadas: ancla OSM exacta → cuadrícula afín calibrada por zona cardinal → diccionario de lugares (cobertura ~80% de registros; ~91% sobre los geocodificables).
 - Conversión de coordenadas si es necesario (EPSG:4326 → proyección local).
 - Unión con shapefiles de comunas (disponibles en SIG de Cali).
 - Agregación temporal: generar columnas `franja_horaria`, `dia_semana`, `mes`.
