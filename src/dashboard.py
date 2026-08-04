@@ -19,7 +19,6 @@ from src.fallecidos import (
     build_fatality_kpis,
     load_fatality_data,
 )
-from src.insights import build_insights
 from src.mapa import build_accident_map
 from src.metrics import (
     aggregate_by_comuna,
@@ -257,135 +256,10 @@ def _render_kpi_strip(accidents: pd.DataFrame) -> None:
     )
 
 
-def _render_operations_view(accidents: pd.DataFrame, show_heatmap: bool) -> None:
-    map_col, insight_col = st.columns((2.35, 1), gap="large")
-    with map_col:
-        st.markdown(
-            '<h2 class="section-title">Mapa operativo</h2>',
-            unsafe_allow_html=True,
-        )
-        has_geocoded_points = _has_geocoded_points(accidents)
-        if has_geocoded_points and len(accidents) > 1500:
-            st.info(
-                "💡 **Rendimiento:** Se muestra una muestra representativa de 1,500 marcadores individuales para "
-                "evitar ralentizar el navegador, pero el mapa de calor y las estadísticas utilizan el 100% de los datos."
-            )
-        if has_geocoded_points:
-            accident_map = build_accident_map(accidents, show_heatmap=show_heatmap)
-            st_folium(accident_map, use_container_width=True, height=600, key="mapa_operativo", returned_objects=[])
-        else:
-            _render_address_operations_view(accidents)
-
-    with insight_col:
-        _render_insight_panel(accidents)
-        _render_risk_rankings(accidents)
-
-
 def _has_geocoded_points(accidents: pd.DataFrame) -> bool:
     if accidents.empty or {"latitud", "longitud"}.difference(accidents.columns):
         return False
     return bool(accidents[["latitud", "longitud"]].dropna().shape[0])
-
-
-def _render_address_operations_view(accidents: pd.DataFrame) -> None:
-    by_intersection = aggregate_by_intersection(accidents)
-    if by_intersection.empty:
-        _render_empty_state(
-            "No hay puntos georreferenciados ni direcciones válidas para mapear.",
-            [
-                "Cargar un archivo con latitud y longitud para activar el mapa.",
-                "O incluir una columna de dirección para analizar concentración territorial.",
-            ],
-        )
-        return
-
-    st.caption(
-        "La fuente actual no trae coordenadas. Se muestra concentración por dirección reportada."
-    )
-    top_points = by_intersection.head(15)
-    fig = px.bar(
-        top_points.sort_values("accidentes"),
-        x="accidentes",
-        y="interseccion",
-        orientation="h",
-        text="accidentes",
-        labels={"accidentes": "Accidentes", "interseccion": "Dirección"},
-    )
-    _style_bar_figure(fig, height=430)
-    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-    st.dataframe(
-        by_intersection.head(50),
-        hide_index=True,
-        width="stretch",
-        column_config={
-            "interseccion": st.column_config.TextColumn("Dirección / punto"),
-            "accidentes": st.column_config.NumberColumn("Accidentes", format="%d"),
-        },
-    )
-
-
-def _render_insight_panel(accidents: pd.DataFrame) -> None:
-    insights = build_insights(accidents)
-    st.markdown(
-        '<h2 class="section-title">Lectura rápida</h2>',
-        unsafe_allow_html=True,
-    )
-    if not insights:
-        st.info("Sin datos suficientes para generar insights.")
-        return
-
-    for insight in insights:
-        st.markdown(
-            f'<div class="insight-item">{insight}</div>',
-            unsafe_allow_html=True,
-        )
-
-
-def _render_risk_rankings(accidents: pd.DataFrame) -> None:
-    by_comuna = aggregate_by_comuna(accidents).head(5)
-    if by_comuna.empty:
-        st.markdown('<h3 class="panel-title">Top direcciones</h3>', unsafe_allow_html=True)
-        by_intersection = aggregate_by_intersection(accidents).head(5)
-        if by_intersection.empty:
-            st.info("Sin direcciones para mostrar.")
-        else:
-            fig = px.bar(
-                by_intersection.sort_values("accidentes"),
-                x="accidentes",
-                y="interseccion",
-                orientation="h",
-                text="accidentes",
-                labels={"accidentes": "Accidentes", "interseccion": "Dirección"},
-            )
-            _style_bar_figure(fig, height=240)
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-    else:
-        st.markdown('<h3 class="panel-title">Top comunas</h3>', unsafe_allow_html=True)
-        fig = px.bar(
-            by_comuna.sort_values("accidentes"),
-            x="accidentes",
-            y="comuna",
-            orientation="h",
-            text="accidentes",
-            labels={"accidentes": "Accidentes", "comuna": "Comuna"},
-        )
-        _style_bar_figure(fig, height=240)
-        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-
-    st.markdown('<h3 class="panel-title">Franja horaria</h3>', unsafe_allow_html=True)
-    by_band = aggregate_by_time_band(accidents)
-    if by_band.empty:
-        st.info("Sin datos de franja horaria para mostrar.")
-    else:
-        fig = px.bar(
-            by_band,
-            x="franja_horaria",
-            y="accidentes",
-            text="accidentes",
-            labels={"accidentes": "Accidentes", "franja_horaria": ""},
-        )
-        _style_bar_figure(fig, height=220)
-        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
 
 def _render_hotspots_section(accidents: pd.DataFrame, show_heatmap: bool) -> None:

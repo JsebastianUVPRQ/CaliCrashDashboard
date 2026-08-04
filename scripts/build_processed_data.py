@@ -1,8 +1,12 @@
 """Build the combined processed accident dataset from raw Cali sources.
 
 Combines the two official Cali datasets (siniestralidad 2016-2024 +
-lesionados 2016-2025), normalizes them, deduplicates overlapping records
-and writes a compact Parquet file to ``data/processed/accidentes_limpios.parquet``.
+lesionados 2016-2025), normalizes them, deduplicates overlapping records,
+geocodes every unique intersection and writes:
+
+- ``data/processed/accidentes_limpios.parquet`` (records + coordinates)
+- ``data/processed/geocoded_intersections.parquet`` (unique intersection
+  lookup table with ``latitud``/``longitud``/``metodo``)
 """
 
 import sys
@@ -13,6 +17,11 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.etl import normalize_accident_data, read_csv_flexible  # noqa: E402
+from src.geocode import (  # noqa: E402
+    build_default_lugares,
+    build_default_model,
+    geocode_series,
+)
 
 RAW_DIR = Path("data/raw")
 PROCESSED_DIR = Path("data/processed")
@@ -21,6 +30,42 @@ SOURCES = [
     ("Siniestralidad 2016-2024", RAW_DIR / "cali_siniestralidad_2016_2024.csv"),
     ("Lesionados 2016-2025", RAW_DIR / "cali_lesionados_2016_2025.csv"),
 ]
+
+COORD_COLUMNS = ("latitud", "longitud", "metodo_geo")
+
+
+def geocode_dataset(combined: pd.DataFrame) -> pd.DataFrame:
+    """Geocode the unique intersections and attach coordinates in place."""
+    model = build_default_model()
+    lugares = build_default_lugares()
+    if model is None:
+        print("[geocode] no hay anclas OSM; se omite la geolocalización")
+        return combined
+
+    unique_intersections = (
+        combined["interseccion"].dropna().astype(str).drop_duplicates().reset_index(drop=True)
+    )
+    print(f"[geocode] {len(unique_intersections):,} intersecciones únicas")
+
+    geocoded = geocode_series(unique_intersections, model=model, lugares=lugares)
+    lookup = pd.concat(
+        [unique_intersections.rename("interseccion"), geocoded.reset_index(drop=True)],
+        axis=1,
+    )
+    lookup = lookup.rename(
+        columns={"latitud": "latitud_geo", "longitud": "longitud_geo", "metodo": "metodo_geo"}
+    )
+    geocoded_path = PROCESSED_DIR / "geocoded_intersections.parquet"
+    lookup.to_parquet(geocoded_path, index=False)
+    print(f"[save] {geocoded_path} ({len(lookup):,} cruces geocodificados)")
+
+    keyed = lookup.set_index("interseccion")
+    merged = combined.merge(keyed, how="left", left_on="interseccion", right_index=True)
+    # Keep original coordinates when the source already provided them.
+    merged["latitud"] = merged["latitud"].fillna(merged["latitud_geo"])
+    merged["longitud"] = merged["longitud"].fillna(merged["longitud_geo"])
+    merged = merged.drop(columns=["latitud_geo", "longitud_geo"])
+    return merged
 
 
 def main() -> None:
@@ -60,6 +105,8 @@ def main() -> None:
         f"({(before-len(combined)):,} eliminadas)"
     )
 
+    combined = geocode_dataset(combined)
+
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     out_path = PROCESSED_DIR / "accidentes_limpios.parquet"
     combined.to_parquet(out_path, index=False)
@@ -77,6 +124,10 @@ def main() -> None:
         "Intersecciones únicas: ",
         combined["interseccion"].nunique(),
     )
+    has_coords = combined[["latitud", "longitud"]].notna().all(axis=1)
+    print(f"Cobertura de coordenadas: {has_coords.mean()*100:.1f}%")
+    if "metodo_geo" in combined.columns:
+        print("Métodos de geocodificación:", dict(combined["metodo_geo"].value_counts()))
     for label, raw_n, clean_n in stats:
         print(f"  {label}: {raw_n:,} -> {clean_n:,}")
 

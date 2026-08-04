@@ -54,12 +54,9 @@ _STREET_TYPES = (
     "AUTOPISTA",
 )
 
-# Axis used by the affine grid. Calles/transversales run along the x axis
-# (mainly east-west movement) and carreras/diagonales/avenidas along the y
-# axis (mainly north-south movement), as calibrated from the OSM anchors.
-_AXIS_X = frozenset({"CALLE", "TRANSVERSAL"})
-_AXIS_Y = frozenset({"CARRERA", "DIAGONAL", "AVENIDA"})
-
+# Axis used by the affine grid. This is only *hinted* by street type: the
+# final (x, y) assignment is decided empirically per zone via
+# ``_grid_axis_candidates`` because diagonals/transversales switch role.
 _ZONE_WORDS = ("NORTE", "SUR", "ORIENTE", "ESTE", "OESTE")
 _DIR_LETTERS = {"N": "NORTE", "S": "SUR", "E": "ORIENTE", "O": "OESTE"}
 
@@ -111,6 +108,7 @@ _VIA_RE = re.compile(
     r"^(?P<tipo>CALLE|CARRERA|AVENIDA|DIAGONAL|TRANSVERSAL|AUTOPISTA)\s+"
     r"(?P<num>\d{1,4})\s*"
     r"(?P<let>[A-Z]{1,2})?\s*"
+    r"(?P<sub>\d{1,4})?\s*"
     r"(?P<suf>NORTE|SUR|ORIENTE|ESTE|OESTE)?\s*"
     r"(?P<bis>BIS)?\s*$"
 )
@@ -156,6 +154,14 @@ def normalize_intersection(text: object) -> str:
     # "CARRERA 8 A") untouched.
     value = re.sub(r"\b(Y|E|Y)\b", "CON", value)
     value = re.sub(r"\bCON(?: CON)+\b", "CON", value)
+
+    # Recover pairs that lost their connector ("CALLE 70 CARRERA 5" or
+    # "CALLE 25 & CARRERA 109" after punctuation cleanup).
+    value = re.sub(
+        r"\b(\d[0-9A-Z]*)\s+(CARRERA|CALLE|AVENIDA|DIAGONAL|TRANSVERSAL|AUTOPISTA)\b",
+        r"\1 CON \2",
+        value,
+    )
     value = re.sub(r"\s+", " ", value).strip()
     return value
 
@@ -206,6 +212,9 @@ def parse_intersection(text: object) -> ParsedIntersection | None:
         return None
 
     parts = [part.strip() for part in normalized.split(" CON ") if part.strip()]
+    # Ignore a trailing bare number ("Carrera 7 y 8" -> keep "Carrera 7").
+    while len(parts) > 2 and re.fullmatch(r"\d{1,4}", parts[-1]) and parse_via(parts[-2]) is not None:
+        parts.pop()
     if len(parts) != 2:
         return None
 
@@ -238,25 +247,34 @@ def canonical_key(parsed: ParsedIntersection) -> str:
     return " CON ".join(sorted((_segment_label(left), _segment_label(right))))
 
 
-def _grid_axis(parsed: ParsedIntersection) -> tuple[StreetSegment | None, StreetSegment | None]:
-    """Map a parsed pair onto ``(x, y)`` grid numbers.
+def _grid_axis_candidates(
+    parsed: ParsedIntersection,
+) -> list[tuple[StreetSegment, StreetSegment]]:
+    """Candidate (x, y) grid assignments for a parsed pair.
 
-    The x axis prefers a CALLE (or TRANSVERSAL) and the y axis a CARRERA
-    (or DIAGONAL / AVENIDA), so degenerate pairs such as
-    ``CALLE + TRANSVERSAL`` still resolve when one side is dominant.
+    Diagonal/transversal streets change role by zone, so every ordered
+    pair is tried and the first one that falls inside a calibrated zone
+    and the Cali range wins (see :func:`_grid_point`).
     """
     left, right = parsed
+    candidates: list[tuple[StreetSegment, StreetSegment]] = []
+    for first in (left, right):
+        for second in (left, right):
+            if first is second:
+                continue
+            pair = (first, second)
+            if pair not in candidates:
+                candidates.append(pair)
+    return candidates
 
-    def _pick(side_set: frozenset[str], prefer: str) -> StreetSegment | None:
-        for segment in (left, right):
-            if segment[0] == prefer:
-                return segment
-        for segment in (left, right):
-            if segment[0] in side_set:
-                return segment
-        return None
 
-    return _pick(_AXIS_X, "CALLE"), _pick(_AXIS_Y, "CARRERA")
+def _calibration_xy(parsed: ParsedIntersection) -> tuple[StreetSegment, StreetSegment]:
+    """Deterministic (x, y) used to place anchors while fitting."""
+    def _score(pair: tuple[StreetSegment, StreetSegment]) -> int:
+        x_segment, y_segment = pair
+        return (1 if x_segment[0] == "CALLE" else 0) + (1 if y_segment[0] == "CARRERA" else 0)
+
+    return max(_grid_axis_candidates(parsed), key=_score)
 
 
 def _zone_of(parsed: ParsedIntersection) -> str:
@@ -315,9 +333,7 @@ def calibrate_grid(anchors: pd.DataFrame) -> GridModel:
         if left is None or right is None:
             continue
         parsed: ParsedIntersection = (left, right)
-        x_segment, y_segment = _grid_axis(parsed)
-        if x_segment is None or y_segment is None:
-            continue
+        x_segment, y_segment = _calibration_xy(parsed)
         rows.append(
             {
                 "x": _grid_x(x_segment),
@@ -405,33 +421,30 @@ def _in_range(lat: float, lon: float) -> bool:
 
 
 def _grid_point(model: GridModel, parsed: ParsedIntersection) -> Location | None:
-    """Apply the per-zone affine grid to a parsed intersection."""
-    x_segment, y_segment = _grid_axis(parsed)
-    if x_segment is None or y_segment is None:
-        return None
+    """Apply the per-zone affine grid to a parsed intersection.
 
+    Tries every ordered (x, y) assignment and returns the first whose
+    result falls inside a calibrated zone box and the Cali range.
+    """
     zone = _zone_of(parsed)
     if zone not in model.zones:
         zone = ""
-
     calibration = model.zones.get(zone)
-    if calibration is None:
-        return None
-
-    x = _grid_x(x_segment)
-    y = _grid_y(y_segment)
     box = model.bounds.get(zone, model.bounds.get(""))
-    if box is None:
-        return None
-    if not (box[0] <= x <= box[1] and box[2] <= y <= box[3]):
+    if calibration is None or box is None:
         return None
 
     beta_lat, beta_lon = calibration
-    lat = float(beta_lat[0] + beta_lat[1] * x + beta_lat[2] * y)
-    lon = float(beta_lon[0] + beta_lon[1] * x + beta_lon[2] * y)
-    if not _in_range(lat, lon):
-        return None
-    return lat, lon
+    for x_segment, y_segment in _grid_axis_candidates(parsed):
+        x = _grid_x(x_segment)
+        y = _grid_y(y_segment)
+        if not (box[0] <= x <= box[1] and box[2] <= y <= box[3]):
+            continue
+        lat = float(beta_lat[0] + beta_lat[1] * x + beta_lat[2] * y)
+        lon = float(beta_lon[0] + beta_lon[1] * x + beta_lon[2] * y)
+        if _in_range(lat, lon):
+            return lat, lon
+    return None
 
 
 def load_lugares(path: Path | None = None) -> dict[str, Location]:
@@ -446,13 +459,28 @@ def load_lugares(path: Path | None = None) -> dict[str, Location]:
     result: dict[str, Location] = {}
     for _, row in table[["normalizado", "latitud", "longitud"]].dropna().iterrows():
         key = normalize_intersection(str(row["normalizado"]))
-        if key and _in_range(float(row["latitud"]), float(row["longitud"])):
+        if not _usable_place_key(key):
+            continue
+        if _in_range(float(row["latitud"]), float(row["longitud"])):
             result[key] = (float(row["latitud"]), float(row["longitud"]))
     return result
 
 
+def _usable_place_key(key: str) -> bool:
+    """Whether a normalized name can be used as a place lookup key.
+
+    Rejects empty names, bare street types (``CALLE``) and very short
+    tokens that would over-match grid texts via the contains fallback.
+    """
+    if not key:
+        return False
+    if key in _STREET_TYPES or key.startswith(tuple(f"{tipo} " for tipo in _STREET_TYPES)):
+        return False
+    return len(key) >= 5
+
+
 def _lookup_lugar(lugares: dict[str, Location], text: str) -> Location | None:
-    """Exact normalized lookup, then a contains-based fallback."""
+    """Exact normalized lookup, then a longest-key contains-based fallback."""
     normalized = normalize_intersection(text)
     if not normalized:
         return None
@@ -460,10 +488,14 @@ def _lookup_lugar(lugares: dict[str, Location], text: str) -> Location | None:
         return lugares[normalized]
 
     lowered = normalized.lower()
-    for key, point in lugares.items():
-        key_lower = key.lower()
-        if key_lower and (key_lower in lowered or lowered in key_lower):
-            return point
+    best_key = ""
+    for key in lugares:
+        if len(key) > len(best_key):
+            key_lower = key.lower()
+            if key_lower and (key_lower in lowered or lowered in key_lower):
+                best_key = key
+    if best_key:
+        return lugares[best_key]
     return None
 
 
@@ -474,8 +506,10 @@ def geocode_intersection(
 ) -> Location | None:
     """Geocode one intersection text into ``(lat, lon)`` or ``None``.
 
-    Priority: curated place -> exact OSM anchor -> per-zone affine grid.
-    Every outcome is validated inside the Cali bounding box.
+    Priority: exact curated place -> exact OSM anchor -> per-zone affine
+    grid -> contains-based place lookup. Grid resolutions always win over
+    the fuzzy place fallback so that ``"calle 10 con carrera 39"`` never
+    lands on a nearby clinic.
 
     Examples:
         ``geocode_intersection("Calle 10 Con Carrera 39", model, lugares)``
@@ -493,9 +527,9 @@ def geocode_intersection(
         return None
 
     if lugares:
-        point = _lookup_lugar(lugares, normalized)
-        if point is not None:
-            return point
+        exact = lugares.get(normalized)
+        if exact is not None:
+            return exact
 
     if model is not None:
         parsed = parse_intersection(normalized)
@@ -507,6 +541,11 @@ def geocode_intersection(
             point = _grid_point(model, parsed)
             if point is not None:
                 return point
+
+    if lugares:
+        point = _lookup_lugar(lugares, normalized)
+        if point is not None:
+            return point
 
     return None
 
@@ -564,7 +603,7 @@ def geocode_series(
 def _method_of(text: str, model: GridModel | None, lugares: dict[str, Location] | None) -> str:
     """Tag the resolution method for reporting/telemetry."""
     normalized = normalize_intersection(text)
-    if lugares and _lookup_lugar(lugares, normalized) is not None:
+    if lugares and lugares.get(normalized) is not None:
         return "lugar"
     if model is not None:
         parsed = parse_intersection(normalized)
@@ -573,6 +612,8 @@ def _method_of(text: str, model: GridModel | None, lugares: dict[str, Location] 
                 return "ancla"
             if _grid_point(model, parsed) is not None:
                 return "cuadricula"
+    if lugares and _lookup_lugar(lugares, normalized) is not None:
+        return "lugar"
     return ""
 
 
