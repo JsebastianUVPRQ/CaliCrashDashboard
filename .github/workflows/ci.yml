@@ -37,3 +37,20 @@ jobs:
 
       - name: Run black check
         run: black --check --line-length 100 src/ tests/
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Node dependencies
+        run: npm ci || npm install
+
+      - name: Run ESLint (security & accessibility)
+        run: npx eslint .
+
+      - name: Run HTMLHint
+        run: npx htmlhint "**/*.html" || true
+
+      - name: Run Stylelint
+        run: npx stylelint "**/*.css" || true
