@@ -26,6 +26,8 @@ from src.metrics import (
     aggregate_by_hour,
     aggregate_by_intersection,
     aggregate_by_time_band,
+    aggregate_by_vehicle_and_severity,
+    aggregate_by_vehicle_type,
     build_kpis,
     filter_accidents,
 )
@@ -108,8 +110,9 @@ def render_dashboard() -> None:
     )
 
     _render_kpi_strip(filtered)
-    _render_operations_view(filtered, filters.show_heatmap)
+    _render_hotspots_section(filtered, filters.show_heatmap)
     _render_temporal_story(filtered)
+    _render_composition_section(filtered)
     _render_fatalities_section(fatalities)
     _render_technical_detail(filtered, accidents, raw_accidents)
 
@@ -383,6 +386,222 @@ def _render_risk_rankings(accidents: pd.DataFrame) -> None:
         )
         _style_bar_figure(fig, height=220)
         st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+
+def _render_hotspots_section(accidents: pd.DataFrame, show_heatmap: bool) -> None:
+    """Render the most dangerous intersections section."""
+    st.markdown(
+        '<h2 class="section-title">Cruces peligrosos</h2>',
+        unsafe_allow_html=True,
+    )
+
+    by_intersection = aggregate_by_intersection(accidents)
+    if by_intersection.empty:
+        _render_empty_state(
+            "No hay direcciones válidas para analizar cruces peligrosos.",
+            [
+                "Cargar un archivo con la columna de dirección o intersección.",
+                "O revisar los filtros actuales.",
+            ],
+        )
+        return
+
+    rank_col, map_col = st.columns((1.1, 2), gap="large")
+
+    with rank_col:
+        st.markdown(
+            '<h3 class="panel-title">Top 15 cruces</h3>',
+            unsafe_allow_html=True,
+        )
+        top = by_intersection.head(15).copy()
+        total = int(top["accidentes"].sum())
+        top["share"] = top["accidentes"] / total * 100
+        top["share_str"] = top["share"].map(lambda v: f"{v:.1f}%")
+        top["accidentes_str"] = top["accidentes"].map(lambda v: f"{v:,}")
+
+        st.dataframe(
+            top[["interseccion", "accidentes_str", "share_str"]],
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "interseccion": st.column_config.TextColumn("Interseccion"),
+                "accidentes_str": st.column_config.TextColumn("Accidentes"),
+                "share_str": st.column_config.TextColumn("Participacion"),
+            },
+        )
+
+        severity_by_hotspot = _severity_breakdown(accidents, by_intersection.head(5))
+        if not severity_by_hotspot.empty:
+            fig = px.bar(
+                severity_by_hotspot,
+                x="accidentes",
+                y="interseccion",
+                color="gravedad",
+                orientation="h",
+                labels={"accidentes": "Accidentes", "interseccion": ""},
+            )
+            fig.update_layout(barmode="stack")
+            _style_bar_figure(fig, height=280)
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+    with map_col:
+        st.markdown(
+            '<h3 class="panel-title">Mapa de concentracion</h3>',
+            unsafe_allow_html=True,
+        )
+        has_geocoded = _has_geocoded_points(accidents)
+        if has_geocoded:
+            accident_map = build_accident_map(accidents, show_heatmap=show_heatmap)
+            st_folium(
+                accident_map,
+                use_container_width=True,
+                height=480,
+                key="mapa_hotspots",
+                returned_objects=[],
+            )
+        else:
+            st.info(
+                "La fuente actual no trae coordenadas. "
+                "El ranking de cruces se calcula por direccion reportada."
+            )
+
+
+def _severity_breakdown(
+    accidents: pd.DataFrame, top_intersections: pd.DataFrame
+) -> pd.DataFrame:
+    """Break down severity counts for the given intersections."""
+    columns = ["interseccion", "gravedad", "accidentes"]
+    if accidents.empty or top_intersections.empty:
+        return pd.DataFrame(columns=columns)
+
+    top_names = set(top_intersections["interseccion"].astype(str))
+    subset = accidents[accidents["interseccion"].astype(str).isin(top_names)]
+    if subset.empty:
+        return pd.DataFrame(columns=columns)
+
+    return (
+        subset.groupby(["interseccion", "gravedad"], dropna=False, observed=False)
+        .size()
+        .reset_index(name="accidentes")
+        .sort_values("accidentes", ascending=False)
+        .reset_index(drop=True)
+    )
+
+
+def _render_composition_section(accidents: pd.DataFrame) -> None:
+    """Render vehicle type, accident type and severity composition section."""
+    st.markdown(
+        '<h2 class="section-title">Composicion por vehiculo, tipo y gravedad</h2>',
+        unsafe_allow_html=True,
+    )
+
+    if "tipo_vehiculo" not in accidents.columns:
+        st.info("El dataset actual no incluye la columna tipo_vehiculo.")
+        return
+
+    vehicle_col, type_col = st.columns(2, gap="large")
+
+    with vehicle_col:
+        st.markdown(
+            '<h3 class="panel-title">Accidentes por tipo de vehiculo</h3>',
+            unsafe_allow_html=True,
+        )
+        by_vehicle = aggregate_by_vehicle_type(accidents).head(10)
+        if by_vehicle.empty:
+            st.info("Sin datos de vehiculo para mostrar.")
+        else:
+            fig = px.bar(
+                by_vehicle.sort_values("accidentes"),
+                x="accidentes",
+                y="tipo_vehiculo",
+                orientation="h",
+                text="accidentes",
+                labels={"accidentes": "Accidentes", "tipo_vehiculo": ""},
+            )
+            _style_bar_figure(fig, height=300)
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+        st.markdown(
+            '<h3 class="panel-title">Vehiculo x Gravedad</h3>',
+            unsafe_allow_html=True,
+        )
+        vehicle_severity = aggregate_by_vehicle_and_severity(accidents)
+        vehicle_severity = vehicle_severity[
+            vehicle_severity["tipo_vehiculo"].isin(
+                by_vehicle.head(6)["tipo_vehiculo"].tolist()
+            )
+        ]
+        if vehicle_severity.empty:
+            st.info("Sin datos de vehiculo x gravedad para mostrar.")
+        else:
+            fig = px.bar(
+                vehicle_severity,
+                x="accidentes",
+                y="tipo_vehiculo",
+                color="gravedad",
+                orientation="h",
+                labels={"accidentes": "Accidentes", "tipo_vehiculo": ""},
+            )
+            fig.update_layout(barmode="stack")
+            _style_bar_figure(fig, height=280)
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+    with type_col:
+        st.markdown(
+            '<h3 class="panel-title">Accidentes por tipo de siniestro</h3>',
+            unsafe_allow_html=True,
+        )
+        if "tipo_accidente" in accidents.columns:
+            by_type = (
+                accidents.groupby("tipo_accidente", dropna=False, observed=False)
+                .size()
+                .reset_index(name="accidentes")
+                .sort_values("accidentes", ascending=False)
+                .head(10)
+            )
+            if by_type.empty:
+                st.info("Sin datos de tipo de siniestro para mostrar.")
+            else:
+                fig = px.bar(
+                    by_type.sort_values("accidentes"),
+                    x="accidentes",
+                    y="tipo_accidente",
+                    orientation="h",
+                    text="accidentes",
+                    labels={"accidentes": "Accidentes", "tipo_accidente": ""},
+                )
+                _style_bar_figure(fig, height=300)
+                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+        st.markdown(
+            '<h3 class="panel-title">Distribucion por gravedad</h3>',
+            unsafe_allow_html=True,
+        )
+        if "gravedad" in accidents.columns:
+            by_severity = (
+                accidents.groupby("gravedad", dropna=False, observed=False)
+                .size()
+                .reset_index(name="accidentes")
+                .sort_values("accidentes", ascending=False)
+            )
+            if by_severity.empty:
+                st.info("Sin datos de gravedad para mostrar.")
+            else:
+                fig = px.pie(
+                    by_severity,
+                    names="gravedad",
+                    values="accidentes",
+                    hole=0.45,
+                )
+                fig.update_layout(
+                    height=280,
+                    margin={"l": 8, "r": 8, "t": 8, "b": 8},
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    font={"color": "#d8dee9", "size": 12},
+                    showlegend=True,
+                )
+                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
 
 def _render_temporal_story(accidents: pd.DataFrame) -> None:

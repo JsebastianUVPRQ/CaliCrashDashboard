@@ -4,6 +4,8 @@ from src.metrics import (
     aggregate_by_intersection,
     aggregate_by_hour,
     aggregate_by_comuna,
+    aggregate_by_vehicle_and_severity,
+    aggregate_by_vehicle_type,
     aggregate_by_weekday,
     build_kpis,
     filter_accidents,
@@ -18,6 +20,7 @@ def _sample_accidents() -> pd.DataFrame:
             "comuna": ["2", "2", "17"],
             "franja_horaria": ["mañana", "noche", "mañana"],
             "tipo_accidente": ["Choque", "Atropello", "Choque"],
+            "tipo_vehiculo": ["Automóvil", "Motocicleta", "Automóvil"],
             "gravedad": ["Solo daños", "Herido", "Solo daños"],
             "interseccion": ["A", "B", "A"],
             "dia_semana": ["miércoles", "miércoles", "jueves"],
@@ -164,3 +167,32 @@ def test_build_kpis_weekly_trend_long_period() -> None:
     result = build_kpis(df)
     assert result.weekly_trend == "A la baja"
     assert result.weekly_trend_delta == -50.0
+
+
+def test_aggregate_by_vehicle_type_counts_descending() -> None:
+    result = aggregate_by_vehicle_type(_sample_accidents())
+
+    assert result["tipo_vehiculo"].tolist() == ["Automóvil", "Motocicleta"]
+    assert result["accidentes"].tolist() == [2, 1]
+
+
+def test_aggregate_by_vehicle_type_handles_empty_data() -> None:
+    result = aggregate_by_vehicle_type(pd.DataFrame())
+
+    assert result.empty
+    assert "tipo_vehiculo" in result.columns
+
+
+def test_aggregate_by_vehicle_and_severity_cross_tab() -> None:
+    result = aggregate_by_vehicle_and_severity(_sample_accidents())
+
+    assert {"tipo_vehiculo", "gravedad", "accidentes"}.issubset(result.columns)
+    automovil = result[result["tipo_vehiculo"] == "Automóvil"]
+    assert automovil["accidentes"].sum() == 2
+    assert set(automovil["gravedad"]) == {"Solo daños"}
+
+
+def test_aggregate_by_vehicle_and_severity_handles_empty_data() -> None:
+    result = aggregate_by_vehicle_and_severity(pd.DataFrame())
+
+    assert result.empty

@@ -106,6 +106,31 @@ def aggregate_by_time_band(accidents: pd.DataFrame) -> pd.DataFrame:
     return _aggregate_sorted(accidents, "franja_horaria", TIME_BAND_ORDER)
 
 
+def aggregate_by_vehicle_type(accidents: pd.DataFrame) -> pd.DataFrame:
+    """Count accidents by vehicle type in descending order."""
+    return _count_by(accidents, "tipo_vehiculo")
+
+
+def aggregate_by_vehicle_and_severity(accidents: pd.DataFrame) -> pd.DataFrame:
+    """Cross-tabulate accidents by vehicle type and severity."""
+    columns = ["tipo_vehiculo", "gravedad", "accidentes"]
+    if accidents.empty:
+        return pd.DataFrame(columns=columns)
+
+    values = accidents[["tipo_vehiculo", "gravedad"]].astype("string")
+    known = accidents[_known_value_mask(values["tipo_vehiculo"])]
+    if known.empty:
+        return pd.DataFrame(columns=columns)
+
+    return (
+        known.groupby(["tipo_vehiculo", "gravedad"], dropna=False, observed=False)
+        .size()
+        .reset_index(name="accidentes")
+        .sort_values("accidentes", ascending=False)
+        .reset_index(drop=True)
+    )
+
+
 def aggregate_by_weekday(accidents: pd.DataFrame) -> pd.DataFrame:
     """Count accidents by weekday using Monday-first order in Spanish."""
     return _aggregate_sorted(accidents, "dia_semana", WEEKDAY_ORDER)

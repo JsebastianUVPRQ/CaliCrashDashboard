@@ -9,7 +9,7 @@ Desarrollar un dashboard Streamlit que:
 
 ## 2. Fuente y formato de datos
 - **Origen:** Portal de datos abiertos (JSON/CSV) de la Secretaría de Movilidad de Cali.
-- **Campos esperados:** fecha, hora, latitud, longitud, comuna, barrio, tipo de accidente, gravedad, intersección (opcional).
+- **Campos esperados:** fecha, hora, latitud, longitud, comuna, barrio, tipo de accidente, tipo de vehículo, gravedad, intersección (opcional).
 - **Frecuencia de actualización:** mensual (se descargará un snapshot acumulado, o se usará API si está disponible).
 
 ## 3. Arquitectura de software
@@ -31,10 +31,10 @@ graph TD
 - `app.py`: entrada Streamlit ligera.
 - `src/config.py`: configuración compartida de rutas, centro del mapa y orden de categorías.
 - `src/dashboard.py`: composición de la interfaz, carga de CSV desde la barra lateral, filtros, KPIs, visualizaciones y descarga.
-- `src/etl.py`: carga CSV desde `data/processed/accidentes_limpios.csv` o `data/raw/accidentes.csv`, normaliza columnas y deriva `franja_horaria`, `dia_semana` y `mes`.
+- `src/etl.py`: carga CSV desde `data/processed/accidentes_limpios.csv` o `data/raw/accidentes.csv`, normaliza columnas (incluyendo `tipo_vehiculo`) y deriva `franja_horaria`, `dia_semana` y `mes`.
 - `src/fallecidos.py`: carga CSV separados por `;` desde `data/fallecidos`, filtra registros de Cali y agrega mortalidad vial.
 - `src/insights.py`: narrativa automática de concentración por comuna, franja horaria y gravedad.
-- `src/metrics.py`: filtros, KPIs y agregaciones por comuna/franja horaria.
+- `src/metrics.py`: filtros, KPIs y agregaciones por comuna, franja horaria, tipo de vehículo y vehículo × gravedad.
 - `src/mapa.py`: mapa Folium centrado en Cali con marcadores agrupados.
 - `src/modelo.py`: modelo base de frecuencia esperada con promedios históricos por comuna y franja horaria.
 - `tests/`: pruebas unitarias para normalización, filtros, agregaciones y frecuencia esperada.
@@ -51,6 +51,8 @@ Estado implementado:
 - Filtros por comuna, franja horaria, tipo, gravedad y rango de fechas.
 - KPIs de total, promedio diario, comuna crítica e intersección crítica.
 - KPIs compactos de total, comuna crítica, hora crítica y tendencia semanal.
+- **Sección de cruces peligrosos** con ranking de las 15 intersecciones más críticas, desglose por gravedad y mapa de concentración.
+- **Sección de composición** por tipo de vehículo, vehículo × gravedad, tipo de siniestro y distribución de gravedad.
 - Mapa Folium con capa de calor opcional, clusters de marcadores y popups compactos.
 - Panel lateral derecho con insights automáticos, top comunas y franja horaria.
 - Gráficos narrativos de accidentes por hora del día y tendencia diaria.
@@ -61,6 +63,7 @@ Estado implementado:
 - Conversión de coordenadas si es necesario (EPSG:4326 → proyección local).
 - Unión con shapefiles de comunas (disponibles en SIG de Cali).
 - Agregación temporal: generar columnas `franja_horaria`, `dia_semana`, `mes`.
+- Normalización de `tipo_vehiculo` con alias de columnas (`vehiculo`, `tipo_vehiculo_1`, `tipo_de_vehiculo`, etc.) y relleno con `"Sin dato"` cuando falta.
 - Los CSV de `data/fallecidos` son snapshots locales y se excluyen de Git por tamaño; solo se conserva `.gitkeep`.
 
 ## 6. Modelo de frecuencia

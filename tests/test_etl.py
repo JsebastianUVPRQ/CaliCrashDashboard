@@ -22,6 +22,7 @@ def test_normalize_accident_data_adds_derived_columns() -> None:
                 "comuna": "2",
                 "barrio": "Granada",
                 "tipo": "Choque",
+                "Vehiculo": "Motocicleta",
                 "severidad": "Solo daños",
             }
         ]
@@ -33,6 +34,7 @@ def test_normalize_accident_data_adds_derived_columns() -> None:
     assert result.loc[0, "franja_horaria"] == "mañana"
     assert result.loc[0, "mes"] == "2025-02"
     assert result.loc[0, "interseccion"] == "Sin dato"
+    assert result.loc[0, "tipo_vehiculo"] == "Motocicleta"
 
 
 def test_normalize_accident_data_filters_outside_cali_coordinates() -> None:
@@ -131,3 +133,25 @@ def test_normalize_accident_data_coalesces_duplicate_normalized_columns() -> Non
     assert result.loc[0, "gravedad"] == "Con lesionado"
     assert result.loc[0, "tipo_accidente"] == "Por Atropello"
     assert result.loc[0, "interseccion"] == "Carrera 94 Con Calle 4 C"
+
+
+def test_normalize_accident_data_fills_missing_vehicle_type() -> None:
+    raw = pd.DataFrame(
+        [
+            {
+                "fecha": "2025-02-01",
+                "hora": "07:10",
+                "latitud": 3.45,
+                "longitud": -76.53,
+                "comuna": "2",
+                "barrio": "Granada",
+                "tipo_accidente": "Choque",
+                "gravedad": "Solo daños",
+            }
+        ]
+    )
+
+    result = normalize_accident_data(raw)
+
+    assert len(result) == 1
+    assert result.loc[0, "tipo_vehiculo"] == "Sin dato"

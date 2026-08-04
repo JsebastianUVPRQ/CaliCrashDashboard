@@ -198,6 +198,7 @@ def build_sample_accidents() -> pd.DataFrame:
                 "comuna": "2",
                 "barrio": "Versalles",
                 "tipo_accidente": "Choque",
+                "tipo_vehiculo": "Automóvil",
                 "gravedad": "Solo daños",
                 "interseccion": "Avenida 6N con Calle 21N",
             },
@@ -209,6 +210,7 @@ def build_sample_accidents() -> pd.DataFrame:
                 "comuna": "2",
                 "barrio": "Santa Mónica",
                 "tipo_accidente": "Choque",
+                "tipo_vehiculo": "Motocicleta",
                 "gravedad": "Herido",
                 "interseccion": "Avenida 6N con Calle 30N",
             },
@@ -220,6 +222,7 @@ def build_sample_accidents() -> pd.DataFrame:
                 "comuna": "19",
                 "barrio": "San Fernando",
                 "tipo_accidente": "Atropello",
+                "tipo_vehiculo": "Motocicleta",
                 "gravedad": "Herido",
                 "interseccion": "Calle 5 con Carrera 34",
             },
@@ -231,6 +234,7 @@ def build_sample_accidents() -> pd.DataFrame:
                 "comuna": "19",
                 "barrio": "San Fernando",
                 "tipo_accidente": "Caída de ocupante",
+                "tipo_vehiculo": "Motocicleta",
                 "gravedad": "Herido",
                 "interseccion": "Calle 5 con Carrera 34",
             },
@@ -242,6 +246,7 @@ def build_sample_accidents() -> pd.DataFrame:
                 "comuna": "17",
                 "barrio": "El Caney",
                 "tipo_accidente": "Choque",
+                "tipo_vehiculo": "Automóvil",
                 "gravedad": "Solo daños",
                 "interseccion": "Carrera 80 con Calle 42",
             },
@@ -253,6 +258,7 @@ def build_sample_accidents() -> pd.DataFrame:
                 "comuna": "17",
                 "barrio": "Valle del Lili",
                 "tipo_accidente": "Choque",
+                "tipo_vehiculo": "Automóvil",
                 "gravedad": "Solo daños",
                 "interseccion": "Carrera 98 con Calle 25",
             },
@@ -264,6 +270,7 @@ def build_sample_accidents() -> pd.DataFrame:
                 "comuna": "3",
                 "barrio": "San Nicolás",
                 "tipo_accidente": "Atropello",
+                "tipo_vehiculo": "Transporte público",
                 "gravedad": "Herido",
                 "interseccion": "Calle 15 con Carrera 8",
             },
@@ -275,6 +282,7 @@ def build_sample_accidents() -> pd.DataFrame:
                 "comuna": "8",
                 "barrio": "Primitivo Crespo",
                 "tipo_accidente": "Volcamiento",
+                "tipo_vehiculo": "Automóvil",
                 "gravedad": "Solo daños",
                 "interseccion": "Autopista Sur con Carrera 23",
             },
@@ -286,6 +294,7 @@ def build_sample_accidents() -> pd.DataFrame:
                 "comuna": "18",
                 "barrio": "Meléndez",
                 "tipo_accidente": "Choque",
+                "tipo_vehiculo": "Motocicleta",
                 "gravedad": "Fatal",
                 "interseccion": "Calle 5 con Carrera 94",
             },
@@ -335,7 +344,14 @@ def _parse_and_validate(data: pd.DataFrame) -> pd.DataFrame:
     data["hora"] = data["hora"].fillna("00:00").astype(str)
     data["latitud"] = pd.to_numeric(data["latitud"], errors="coerce")
     data["longitud"] = pd.to_numeric(data["longitud"], errors="coerce")
-    for column in ["comuna", "barrio", "tipo_accidente", "gravedad", "interseccion"]:
+    for column in [
+        "comuna",
+        "barrio",
+        "tipo_accidente",
+        "tipo_vehiculo",
+        "gravedad",
+        "interseccion",
+    ]:
         data[column] = data[column].fillna("Sin dato").astype(str)
     data = data.dropna(subset=["fecha"])
     has_coordinates = data["latitud"].notna() & data["longitud"].notna()
