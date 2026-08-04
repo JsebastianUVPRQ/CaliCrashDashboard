@@ -30,7 +30,6 @@ from src.metrics import (
     filter_accidents,
 )
 from src.modelo import estimate_frequency
-from src.stats import fit_frequency_model
 
 
 MONTH_ABBR_ES = {
@@ -142,7 +141,6 @@ def _load_fatalities() -> pd.DataFrame:
 def _render_header(accidents: pd.DataFrame) -> None:
     min_date = accidents["fecha"].min().date() if not accidents.empty else "sin datos"
     max_date = accidents["fecha"].max().date() if not accidents.empty else "sin datos"
-    n_records = f"{len(accidents):,}" if not accidents.empty else "0"
     st.markdown(
         f"""
         <section class="app-header">
@@ -150,10 +148,7 @@ def _render_header(accidents: pd.DataFrame) -> None:
                 <p class="eyebrow">Observatorio de movilidad urbana</p>
                 <h1>Siniestralidad vial — Cali 2025</h1>
             </div>
-            <div class="date-range">
-                <span>{min_date} · {max_date}</span>
-                <span class="record-count">n = {n_records}</span>
-            </div>
+            <div class="date-range">{min_date} · {max_date}</div>
         </section>
         """,
         unsafe_allow_html=True,
@@ -549,11 +544,7 @@ def _render_fatalities_section(fatalities: pd.DataFrame) -> None:
 
 
 def _render_technical_detail(filtered: pd.DataFrame, clean_full: pd.DataFrame, raw_full: pd.DataFrame) -> None:
-    with st.expander("Metodología, modelo estadístico y control de calidad", expanded=False):
-        st.markdown("### Modelo estadístico de frecuencia")
-        _render_model_panel(filtered)
-
-        st.write("---")
+    with st.expander("Ver detalle técnico y control de calidad", expanded=False):
         st.markdown("### Control de calidad de importación")
         from src.etl import data_quality_report
         quality = data_quality_report(raw_full, clean_full)
@@ -570,7 +561,7 @@ def _render_technical_detail(filtered: pd.DataFrame, clean_full: pd.DataFrame, r
             )
 
         st.write("---")
-        st.markdown("### Frecuencia diaria esperada por comuna y franja horaria")
+        st.markdown("### Frecuencia esperada por Comuna y Franja Horaria")
         frequency = estimate_frequency(filtered)
         st.dataframe(
             frequency,
@@ -602,70 +593,6 @@ def _render_technical_detail(filtered: pd.DataFrame, clean_full: pd.DataFrame, r
             file_name="accidentes_filtrados.csv",
             mime="text/csv",
         )
-
-
-def _render_model_panel(filtered: pd.DataFrame) -> None:
-    """Render the Poisson GLM results with diagnostics."""
-    result = fit_frequency_model(filtered)
-
-    if result.n_observations == 0:
-        st.info("No hay datos suficientes para ajustar el modelo estadístico.")
-        return
-
-    diag_cols = st.columns(5)
-    diag_cols[0].metric("Observaciones", f"{result.n_observations:,}")
-    diag_cols[1].metric("Deviance", f"{result.deviance:.2f}")
-    diag_cols[2].metric("AIC", f"{result.aic:.2f}")
-    diag_cols[3].metric("BIC", f"{result.bic:.2f}")
-    diag_cols[4].metric("Sobre-dispersión", f"{result.overdispersion_ratio:.2f}")
-
-    st.caption(
-        f"**Modelo:** {result.formula} · **Familia:** {result.model_family} · "
-        f"**Test de razón de verosimilitud:** p = {result.likelihood_ratio_p:.4f}"
-    )
-    if result.is_overdispersed:
-        st.warning(
-            "⚠️ Se detectó sobre-dispersión (razón > 1.5). Se recomienda un modelo "
-            "Negative Binomial para este subconjunto de datos."
-        )
-
-    st.markdown("#### Coeficientes del modelo")
-    coef_cols = ["termino", "coeficiente", "error_estandar", "z", "p_formateado", "significancia", "razon_tasa", "razon_tasa_ic_inf", "razon_tasa_ic_sup"]
-    st.dataframe(
-        result.coefficients[coef_cols],
-        hide_index=True,
-        width="stretch",
-        column_config={
-            "termino": st.column_config.TextColumn("Término"),
-            "coeficiente": st.column_config.NumberColumn("Coef.", format="%.4f"),
-            "error_estandar": st.column_config.NumberColumn("Error estándar", format="%.4f"),
-            "z": st.column_config.NumberColumn("z", format="%.2f"),
-            "p_formateado": st.column_config.TextColumn("p-valor"),
-            "significancia": st.column_config.TextColumn("Sig."),
-            "razon_tasa": st.column_config.NumberColumn("Razón de tasa", format="%.2f"),
-            "razon_tasa_ic_inf": st.column_config.NumberColumn("RC IC 95% inf", format="%.2f"),
-            "razon_tasa_ic_sup": st.column_config.NumberColumn("RC IC 95% sup", format="%.2f"),
-        },
-    )
-    st.caption("Niveles de significancia: * p < 0.05, ** p < 0.01, *** p < 0.001")
-
-    st.markdown("#### Frecuencia esperada por grupo (modelo Poisson)")
-    expected_cols = ["comuna", "franja_horaria", "accidentes", "dias_observados", "frecuencia_diaria_esperada", "intervalo_inferior", "intervalo_superior", "nivel_riesgo"]
-    st.dataframe(
-        result.expected_frequencies[expected_cols],
-        hide_index=True,
-        width="stretch",
-        column_config={
-            "comuna": st.column_config.TextColumn("Comuna"),
-            "franja_horaria": st.column_config.TextColumn("Franja Horaria"),
-            "accidentes": st.column_config.NumberColumn("Observados", format="%d"),
-            "dias_observados": st.column_config.NumberColumn("Días", format="%d"),
-            "frecuencia_diaria_esperada": st.column_config.NumberColumn("Frecuencia diaria", format="%.2f"),
-            "intervalo_inferior": st.column_config.NumberColumn("IC 95% inf.", format="%.2f"),
-            "intervalo_superior": st.column_config.NumberColumn("IC 95% sup.", format="%.2f"),
-            "nivel_riesgo": st.column_config.TextColumn("Nivel de Riesgo"),
-        },
-    )
 
 
 def _daily_counts(accidents: pd.DataFrame) -> pd.DataFrame:

@@ -86,12 +86,4 @@ def _known_value_counts(accidents: pd.DataFrame, column: str) -> pd.Series:
         & values.str.lower().ne("none")
         & values.ne(".")
     ]
-    counts = values.value_counts()
-    # Deterministic tie-breaking: preserve first-appearance order for equal
-    # counts so insights are stable across pandas versions.
-    first_seen = {
-        value: index for index, value in enumerate(dict.fromkeys(values.tolist()))
-    }
-    return counts.sort_values(ascending=False, kind="stable", key=lambda s: s).loc[
-        sorted(counts.index, key=lambda v: (-counts[v], first_seen.get(v, 0)))
-    ]
+    return values.value_counts()
