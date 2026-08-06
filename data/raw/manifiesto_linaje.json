@@ -1,0 +1,26 @@
+{
+  "e0572389-cc41-4c1f-b443-862be10b6cc3": {
+    "label": "Siniestralidad 2016-2024",
+    "url": "https://datos.cali.gov.co/dataset/cb62a408-9029-4331-8815-ca2caeb126c0/resource/e0572389-cc41-4c1f-b443-862be10b6cc3/download/siniestralidad_2016_2024.csv",
+    "last_modified": "2024-12-06T20:49:08.040416",
+    "sha256": "73e98285bc873fc8f2a80e71d89c37f26dd44b4a7ded14847928d5f5e39e6211",
+    "size_bytes": 27333686,
+    "fetched_at": "2026-08-06T04:22:11+00:00"
+  },
+  "b5e009ef-8739-487d-bb0a-ffab613ce5cb": {
+    "label": "Lesionados 2016-2025",
+    "url": "https://datos.cali.gov.co/dataset/75c089ba-7df3-4816-b80f-c69c6e5362ae/resource/b5e009ef-8739-487d-bb0a-ffab613ce5cb/download/lesionados-en-santiago-de-cali-del-2016-2025.csv",
+    "last_modified": "2025-12-10T20:02:17.737968",
+    "sha256": "fa47c8d5d3c6e8518806cecd030f0cf43e473e4baa5c3714fa65ab09e02a5f9d",
+    "size_bytes": 3861131,
+    "fetched_at": "2026-08-06T04:22:26+00:00"
+  },
+  "8629eb9b-10e2-464c-a4ac-87fa9efc453a": {
+    "label": "Consolidado de muertes 2016-2023",
+    "url": "https://datos.cali.gov.co/dataset/eeb7508e-1b84-4582-9676-43cf5d6ce443/resource/8629eb9b-10e2-464c-a4ac-87fa9efc453a/download/consolidado_muertes_en_accidente_de_ransito_2016_al_2023.csv",
+    "last_modified": "2024-12-10T13:16:22.460153",
+    "sha256": "e9ba7fcffe1e2636f7f0fc096031673d79957e344b0a79dd5489258c5afe8d69",
+    "size_bytes": 122317,
+    "fetched_at": "2026-08-06T04:22:27+00:00"
+  }
+}
