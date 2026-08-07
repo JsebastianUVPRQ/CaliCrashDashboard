@@ -9,7 +9,8 @@ Dashboard interactivo en Streamlit que modela la frecuencia de accidentes de tr�
 - **Mapa interactivo** — Mapa de calor, clusters de marcadores y popups con detalle
 - **Georreferenciación en 3 capas** — Anclas OSM exactas, cuadrícula afín por zona cardinal y diccionario de lugares para las intersecciones sin coordenadas (~80% de cobertura total)
 - **KPIs y narrativas** — Indicadores clave, insights automáticos y patrones temporales
-- **Mortalidad vial** — Análisis de fallecidos con agregaciones por año, horario y clase de siniestro
+- **Mortalidad vial** — Análisis de fallecidos por año, horario, clase de siniestro y actor vial, basado en el consolidado oficial de muertes en accidentes de tránsito (datos.cali.gov.co, 2016-2023) reconciliado por año contra los snapshots del INMLCF
+- **Lineage de datos** — Descarga idempotente de las tres fuentes oficiales del portal CKAN (`src/fetch.py`) con manifiesto de linaje SHA-256 en `data/raw/manifiesto_linaje.json`
 
 ## 🛠 Tecnologías
 
@@ -29,10 +30,16 @@ Dashboard interactivo en Streamlit que modela la frecuencia de accidentes de tr�
 python -m venv venv
 venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 
-# 2. Ejecutar el pipeline de datos (ETL + geocodificación)
+# 2. Descargar (o actualizar) las fuentes oficiales desde datos.cali.gov.co
+venv\Scripts\python.exe scripts\fetch_sources.py
+
+# 3. Ejecutar el pipeline de datos (ETL + geocodificación + mortalidad)
 venv\Scripts\python.exe scripts\build_processed_data.py
 
-# 3. Lanzar el dashboard
+# 3. (alternativa) `--fetch` descarga primero las fuentes y luego construye
+venv\Scripts\python.exe scripts\build_processed_data.py --fetch
+
+# 4. Lanzar el dashboard
 venv\Scripts\python.exe -m streamlit run app.py
 ```
 
@@ -62,7 +69,8 @@ make dashboard  # Lanzar dashboard
 │   ├── schema.py             # Contratos de datos (schema registry)
 │   ├── dashboard.py          # Composición de la interfaz Streamlit
 │   ├── etl.py                # Carga y normalización de accidentes
-│   ├── fallecidos.py         # Carga y agregación de mortalidad
+│   ├── fallecidos.py         # Carga y agregación de mortalidad (consolidado CKAN + snapshots INMLCF)
+│   ├── fetch.py              # Descarga idempotente de fuentes del portal CKAN
 │   ├── geocode.py            # Georreferenciación de intersecciones
 │   ├── insights.py           # Narrativa automática
 │   ├── mapa.py               # Mapas Folium
@@ -71,7 +79,8 @@ make dashboard  # Lanzar dashboard
 │   ├── pipeline/             # Pipeline ETL (extract, validate, transform, load)
 │   └── stats/                # Modelo estadístico Poisson GLM
 ├── scripts/
-│   ├── build_processed_data.py  # ETL: limpia y georreferencia los datasets
+│   ├── build_processed_data.py  # ETL: limpia, georreferencia y fusiona la mortalidad
+│   ├── fetch_sources.py         # CLI: descarga/actualiza las fuentes CKAN (--force)
 │   └── build_lugares.py         # Genera data/processed/lugares_geocodificados.csv
 ├── docs/
 │   ├── data_dictionary.md    # Diccionario de datos
@@ -79,9 +88,9 @@ make dashboard  # Lanzar dashboard
 │   ├── pipeline.md           # Documentación del pipeline
 │   └── architecture.md       # Arquitectura del sistema
 ├── data/
-│   ├── fallecidos/           # Snapshot de fallecidos (gitignored)
-│   ├── raw/                  # Datos crudos (gitignored)
-│   └── processed/            # Datos procesados (gitignored)
+│   ├── fallecidos/           # Snapshots INMLCF + consolidado CKAN de muertes
+│   ├── raw/                  # Datos crudos + manifiesto de linaje
+│   └── processed/            # Datos procesados (parquet/CSV)
 ├── notebooks/
 │   └── fetch_anchors.py      # Descarga one-shot de anclas OSM (14k cruces)
 ├── tests/                    # Pruebas unitarias

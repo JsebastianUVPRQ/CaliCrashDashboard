@@ -40,7 +40,7 @@ def main() -> None:
         status = "descargado" if record else "sin descarga"
         size = f"{record['size_bytes'] / 1024 / 1024:.1f} MB" if record.get("size_bytes") else "-"
         print(f"  {source.label:<38} {status:>10}  ({size})")
-    print(f"Manifiesto: data/raw/manifiesto_linaje.json")
+    print("Manifiesto: data/raw/manifiesto_linaje.json")
 
 
 if __name__ == "__main__":

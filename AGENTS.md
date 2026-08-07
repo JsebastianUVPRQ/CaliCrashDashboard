@@ -41,6 +41,12 @@
 - Las coordenadas de accidentes se asumen en WGS84 (EPSG:4326). Convertir a proyección métrica para cálculos de áreas si es necesario.
 - La georreferenciación de intersecciones vive en `src/geocode.py` (anclas OSM + cuadrícula afín por zona + diccionario de lugares). Si cambian las fuentes o la normalización, regenerar con `scripts/build_processed_data.py` y validar cobertura con `tests/test_geocode.py`.
 
+## 📥 Fuentes de datos oficiales (CKAN)
+- Las tres fuentes viven en el portal datos.cali.gov.co (API CKAN) y se descargan con `src/fetch.py` / `scripts/fetch_sources.py`.
+- La descarga es idempotente: `src/fetch.py` usa el manifest `data/raw/manifiesto_linaje.json` (SHA-256 + `last_modified`) y omite archivos sin cambios; `--force` fuerza re-descarga.
+- La mortalidad se compone del consolidado oficial `cali_muertes_2016_2023.csv` (una fila por fallecido, encoding latin-1, separador `;`) más los snapshots INMLCF en `data/fallecidos/`. `src/fallecidos.py` normaliza ambos formatos al contrato común (`NORMALIZED_COLUMNS`) y `merge_fatality_sources` elige por año la fuente con más meses documentados (empate → consolidado). Cambios en normalización/fusión requieren regenerar con `scripts/build_processed_data.py` (o `--fetch` para descargar antes) y correr pytest.
+- Los tests de la cadena de fuentes están en `tests/test_fetch.py` (sin red, vía monkeypatch) y `tests/test_fallecidos.py`.
+
 ## 🔐 MCP (Model Context Protocol)
 - Si el agente necesita acceder a la fuente de datos dinámicamente, puede configurarse un servidor MCP local (ver `.mcp.json`). Actualmente el proyecto no lo requiere, pero está preparado para futuras integraciones.
 

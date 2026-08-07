@@ -8,9 +8,12 @@ Desarrollar un dashboard Streamlit que:
 - Muestre un mapa interactivo con la densidad de siniestros y filtros dinámicos.
 
 ## 2. Fuente y formato de datos
-- **Origen:** Portal de datos abiertos (JSON/CSV) de la Secretaría de Movilidad de Cali.
-- **Campos esperados:** fecha, hora, latitud, longitud, comuna, barrio, tipo de accidente, tipo de vehículo, gravedad, intersección (opcional).
-- **Frecuencia de actualización:** mensual (se descargará un snapshot acumulado, o se usará API si está disponible).
+- **Origen:** Portal de datos abiertos de Cali — `datos.cali.gov.co` (API CKAN). Tres recursos oficiales de la Secretaría de Movilidad:
+  1. **Siniestralidad 2016-2024** (`cali_siniestralidad_2016_2024.csv`, ~26 MB): eventos reportados por agentes de tránsito, con gravedad y punto de siniestro.
+  2. **Lesionados 2016-2025** (`cali_lesionados_2016_2025.csv`, ~3.7 MB): registro de personas lesionadas; por diseño solo contiene `Con lesionado`.
+  3. **Consolidado de muertes en accidentes de tránsito 2016-2023** (`cali_muertes_2016_2023.csv`, ~0.1 MB): una fila por persona fallecida (`SEXO;EDAD;HORA HECHO;FECHA HECHO;FECHA FALL.;CONDICION`, separador `;`, encoding latin-1).
+- La descarga es idempotente: `src/fetch.py` compara SHA-256 y `last_modified` con el manifiesto `data/raw/manifiesto_linaje.json` y solo re-descarga cuando cambió la versión remota.
+- **Frecuencia de actualización:** manual (`scripts/fetch_sources.py` o `scripts/build_processed_data.py --fetch`); el manifest refleja la fecha de cada descarga.
 
 ## 3. Arquitectura de software
 ```mermaid
@@ -32,9 +35,11 @@ graph TD
 - `src/config.py`: configuración compartida de rutas, centro del mapa y orden de categorías.
 - `src/dashboard.py`: composición de la interfaz, carga automática desde `data/processed/`, filtros, KPIs, visualizaciones y descarga.
 - `src/etl.py`: carga CSV desde `data/processed/accidentes_limpios.csv` o `data/raw/accidentes.csv`, normaliza columnas (incluyendo `tipo_vehiculo`) y deriva `franja_horaria`, `dia_semana` y `mes`.
-- `src/fallecidos.py`: carga CSV separados por `;` desde `data/fallecidos`, filtra registros de Cali y agrega mortalidad vial.
+- `src/fallecidos.py`: carga los CSV de `data/fallecidos` (consolidado CKAN y snapshots INMLCF), normaliza ambos formatos al contrato `ano/mes/dia_semana/rango_3h/rango_6h/sexo/rango_edad/clase_accidente/hipotesis/actor_vial/total_fallecidos` y los fusiona por año; `merge_fatality_sources` elige por año la fuente con más meses documentados (empate → consolidado CKAN) y `reconcile_fatality_sources` produce la tabla de validación cruzada por año.
+- `src/fetch.py`: descarga idempotente de los tres recursos CKAN con manifiesto de linaje SHA-256 (`data/raw/manifiesto_linaje.json`); `fetch_source` omite archivos sin cambios y `fetch_all` procesa todas las fuentes.
 - `src/geocode.py`: georreferencia el campo `interseccion` con tres capas — ancla OSM exacta, cuadrícula afín calibrada por zona cardinal y diccionario de lugares.
-- `scripts/build_processed_data.py`: ETL que limpia las fuentes crudas, geocodifica las intersecciones y escribe `accidentes_limpios.parquet` y `geocoded_intersections.parquet`.
+- `scripts/build_processed_data.py`: ETL que limpia las fuentes crudas, geocodifica las intersecciones y escribe `accidentes_limpios.parquet`, `geocoded_intersections.parquet`, `fallecidos_limpios.parquet` y `fallecidos_reconciliados.csv`. Con `--fetch` descarga primero las fuentes CKAN.
+- `scripts/fetch_sources.py`: CLI que descarga/actualiza las tres fuentes oficiales (flag `--force` para forzar re-descarga).
 - `notebooks/fetch_anchors.py`: descarga one-shot de las anclas OSM (`data/processed/anclas_osm.csv`).
 - `src/insights.py`: narrativa automática de concentración por comuna, franja horaria y gravedad.
 - `src/metrics.py`: filtros, KPIs y agregaciones por comuna, franja horaria, tipo de vehículo y vehículo × gravedad.
@@ -68,7 +73,7 @@ Estado implementado:
 - Unión con shapefiles de comunas (disponibles en SIG de Cali).
 - Agregación temporal: generar columnas `franja_horaria`, `dia_semana`, `mes`.
 - Normalización de `tipo_vehiculo` con alias de columnas (`vehiculo`, `tipo_vehiculo_1`, `tipo_de_vehiculo`, etc.) y relleno con `"Sin dato"` cuando falta.
-- Los CSV de `data/fallecidos` son snapshots locales y se excluyen de Git por tamaño; solo se conserva `.gitkeep`.
+- Mortalidad: `data/fallecidos` contiene el consolidado CKAN (`cali_muertes_2016_2023.csv`) y snapshots INMLCF (`datos-desestructurados_*.csv`). Ambos se normalizan al contrato común y se fusionan por año eligiendo la fuente más completa (consolidado oficial en empates); `data/processed/fallecidos_reconciliados.csv` expone los conteos por año para validación cruzada.
 
 ## 6. Modelo de frecuencia
 - Agregación de conteos por comuna y franja horaria.
@@ -84,8 +89,7 @@ Estado implementado:
 - No se construye aplicación móvil ni backend adicional; todo corre en Streamlit.
 
 ## 9. Próximos pasos
-- Conectar el dataset real de datos abiertos y documentar su esquema final.
 - Incorporar shapefiles de comunas para agregaciones espaciales.
-- Añadir modelo de frecuencia cuando exista suficiente histórico limpio.
-- Incorporar notificaciones o reportes automáticos.
+- Automatizar la descarga del consolidado CKAN (el 2024 aún no está publicado) y refrescar la cadencia con un job programado.
+- Refinar la imputación de horarios y edades ruidosas del consolidado de muertes.
 - Integrar datos meteorológicos para mejorar la predicción.

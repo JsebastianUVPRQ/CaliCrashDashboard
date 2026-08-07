@@ -22,7 +22,49 @@ FATALITY_COLUMNS = {
     "RangoEdad",
     "ClaseAccidente",
     "Hipotesis",
+    "ActorVial",
     "TotalRegistros",
+}
+
+# Columns of the official "Consolidado de muertes en accidentes de tránsito en
+# Cali" (datos.cali.gov.co). One row per person killed on the road.
+CONSOLIDADO_COLUMNS = {
+    "SEXO",
+    "EDAD",
+    "HORA HECHO",
+    "FECHA HECHO",
+    "FECHA FALL.",
+    "CONDICION",
+}
+
+NORMALIZED_COLUMNS = [
+    "ano",
+    "mes",
+    "dia_semana",
+    "rango_3h",
+    "rango_6h",
+    "sexo",
+    "rango_edad",
+    "clase_accidente",
+    "hipotesis",
+    "actor_vial",
+    "total_fallecidos",
+]
+
+SOURCE_CONSOLIDADO = "consolidado_ckan"
+SOURCE_SNAPSHOT = "inmlcf_snapshot"
+
+# Road-user condition -> aproximación a la clase de siniestro (el consolidado
+# solo registra la condición del fallecido, no la clase del accidente).
+CONDICION_CLASE = {
+    "PEATON": "ATROPELLO",
+    "PEATÓN": "ATROPELLO",
+    "CICLISTA": "CHOQUE",
+    "MOTOCICLISTA": "CHOQUE",
+    "PARRILLERO": "CHOQUE",
+    "PASAJERO DE AUTO": "CHOQUE",
+    "CONDUCTOR": "CHOQUE",
+    "JINETE": "CHOQUE",
 }
 
 # Columns that uniquely identify a fatality event. The three snapshot files
@@ -92,9 +134,245 @@ class FatalityKpis:
 
 
 def load_fatality_data(directory: Path) -> pd.DataFrame:
-    """Load and normalize all fatality CSV files from a directory."""
+    """Load and normalize all fatality CSV files from a directory.
+
+    Supports two formats side by side:
+
+    - The official CKAN "Consolidado de muertes en accidentes de tránsito en
+      Cali" (person-level records, ``CONSOLIDADO_COLUMNS``).
+    - The INMLCF snapshot files (aggregated rows, ``FATALITY_COLUMNS``).
+
+    Both formats are normalized to the same contract and merged preferring,
+    for each year, the source that documents the most months (the CKAN
+    consolidado wins ties because it is the municipal official registry).
+    """
+    consolidated, snapshots = load_fatality_frames(directory)
+    return merge_fatality_sources(
+        [consolidated, snapshots],
+        labels=[SOURCE_CONSOLIDADO, SOURCE_SNAPSHOT],
+    )
+
+
+def load_fatality_frames(directory: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Load and normalize the two fatality sources separately.
+
+    Args:
+        directory: Folder holding the fatality CSV files.
+
+    Returns:
+        A tuple ``(consolidado, snapshots)`` with the normalized CKAN
+        consolidado and the normalized INMLCF snapshots (may be empty).
+    """
     files = sorted(directory.glob("*.csv")) if directory.exists() else []
-    return normalize_fatality_data(_read_fatality_files(files))
+    consolidado_frames: list[pd.DataFrame] = []
+    snapshot_frames: list[pd.DataFrame] = []
+    for file in files:
+        raw = read_csv_flexible(file)
+        if _is_consolidado_format(raw):
+            consolidado_frames.append(raw)
+        else:
+            snapshot_frames.append(raw)
+
+    if consolidado_frames:
+        consolidated = _deduplicate_fatality_records(
+            pd.concat(consolidado_frames, ignore_index=True)
+        )
+        consolidated = _normalize_consolidado_fatalities(consolidated)
+    else:
+        consolidated = _empty_fatalities()
+
+    if snapshot_frames:
+        snapshots = _deduplicate_fatality_records(
+            pd.concat(snapshot_frames, ignore_index=True)
+        )
+        snapshots = normalize_fatality_data(snapshots)
+    else:
+        snapshots = _empty_fatalities()
+
+    return consolidated, snapshots
+
+
+def _is_consolidado_format(data: pd.DataFrame) -> bool:
+    """Detect the official CKAN fatality consolidado by its column names."""
+    if data.empty:
+        return False
+    return CONSOLIDADO_COLUMNS.issubset(set(data.columns))
+
+
+def _normalize_consolidado_fatalities(data: pd.DataFrame) -> pd.DataFrame:
+    """Normalize the CKAN consolidado into the shared fatality contract.
+
+    Each row is one person: ``SEXO;EDAD;HORA HECHO;FECHA HECHO;FECHA FALL.;
+    CONDICION``. The event date prefers ``FECHA HECHO`` and falls back to
+    ``FECHA FALL.`` when the former is missing.
+    """
+    if data.empty:
+        return _empty_fatalities()
+
+    normalized = data.copy()
+    for column in CONSOLIDADO_COLUMNS.difference(normalized.columns):
+        normalized[column] = pd.NA
+
+    hecho = _parse_consolidado_date(normalized["FECHA HECHO"])
+    fall = _parse_consolidado_date(normalized["FECHA FALL."])
+    event_date = hecho.fillna(fall)
+
+    horas = _parse_consolidado_hour(normalized["HORA HECHO"])
+    rango_3h = _consolidado_time_range(horas, width=3)
+    rango_6h = _consolidado_time_range(horas, width=6)
+
+    sexos = normalized["SEXO"].astype(str).str.strip().str.upper()
+    condiciones = normalized["CONDICION"].astype(str).str.strip().str.upper()
+
+    normalized["ano"] = event_date.dt.year
+    normalized["mes"] = event_date.dt.month
+    normalized["dia_semana"] = event_date.dt.weekday.map(
+        lambda weekday: WEEKDAY_BY_CODE.get(str(weekday + 1))
+    )
+    normalized["rango_3h"] = rango_3h
+    normalized["rango_6h"] = rango_6h
+    normalized["sexo"] = sexos.map({"MASCULINO": "HOMBRE", "FEMENINO": "MUJER", "FEMENINA": "MUJER"}).fillna("Sin información")
+    normalized["rango_edad"] = _consolidado_age_band(normalized["EDAD"])
+    normalized["clase_accidente"] = condiciones.map(CONDICION_CLASE).fillna("Sin información")
+    normalized["hipotesis"] = "Sin información"
+    normalized["actor_vial"] = condiciones.replace({"SIN DATO": "Sin información"})
+    normalized["total_fallecidos"] = 1
+
+    normalized = normalized.dropna(subset=["ano", "mes"])
+    normalized["ano"] = normalized["ano"].astype(int)
+    normalized["mes"] = normalized["mes"].astype(int)
+    return normalized[NORMALIZED_COLUMNS].reset_index(drop=True)
+
+
+def _parse_consolidado_date(values: pd.Series) -> pd.Series:
+    """Parse day-first dates, treating "." as missing."""
+    text = values.astype(str).str.strip().replace(".", pd.NA)
+    return pd.to_datetime(text, dayfirst=True, errors="coerce")
+
+
+def _parse_consolidado_hour(values: pd.Series) -> pd.Series:
+    """Parse ``HH:MM`` / ``H:MM`` hours; "." becomes NaN."""
+    text = values.astype(str).str.strip().replace(".", pd.NA)
+    parsed = pd.to_datetime(text, format="%H:%M", errors="coerce")
+    return parsed.dt.hour.fillna(-1).astype(int)
+
+
+def _consolidado_time_range(hours: pd.Series, *, width: int) -> pd.Series:
+    """Map integer hours to ``"HH:00 A HH:59"`` bands of the given width."""
+    start = (hours // width) * width
+    valid = hours >= 0
+    labels = pd.Series("Sin información", index=hours.index, dtype="object")
+    labels[valid] = (
+        start[valid].map("{:02d}:00".format) + " A " + (start[valid] + width - 1).map("{:02d}:59".format)
+    )
+    return labels
+
+
+def _consolidado_age_band(values: pd.Series) -> pd.Series:
+    """Map raw ages (int, ``"35-45"``, ``"2M"``, ``"23h"``) to age bands."""
+    text = values.astype(str).str.strip()
+
+    def band(value: str) -> str:
+        if value in {".", "SIN DATO", "NAN"}:
+            return "Sin información"
+        if value.isdigit():
+            age = int(value)
+            return f"[{age // 5 * 5},{age // 5 * 5 + 5})"
+        if "-" in value:
+            low, _, high = value.partition("-")
+            if low.isdigit() and high.isdigit():
+                return f"[{low},{high})"
+        return "[0,1)"
+
+    return text.map(band)
+
+
+def merge_fatality_sources(
+    frames: list[pd.DataFrame], labels: list[str] | None = None
+) -> pd.DataFrame:
+    """Merge normalized fatality frames choosing the best source per year.
+
+    For each year the source documenting the most distinct months wins; the
+    CKAN consolidado (official municipal registry) breaks ties. The chosen
+    source is recorded in a ``fuente`` column.
+
+    Args:
+        frames: Normalized fatality DataFrames (same contract columns).
+        labels: Source labels, one per frame. Defaults to
+            ``consolidado_ckan`` / ``inmlcf_snapshot`` in order.
+
+    Returns:
+        A merged DataFrame with a ``fuente`` column added.
+    """
+    if labels is None:
+        labels = [SOURCE_CONSOLIDADO, SOURCE_SNAPSHOT][: len(frames)]
+    frames = [frame for frame in frames if not frame.empty]
+    if not frames:
+        return _empty_fatalities()
+
+    combined = pd.concat(
+        (frame.assign(fuente=label) for frame, label in zip(frames, labels)),
+        ignore_index=True,
+    )
+    combined = combined[combined["ano"].notna() & combined["mes"].notna()].copy()
+    if combined.empty:
+        return _empty_fatalities()
+
+    coverage = (
+        combined.groupby(["fuente", "ano"], observed=False)["mes"]
+        .nunique()
+        .rename("meses")
+        .reset_index()
+    )
+    coverage["prioridad"] = coverage["fuente"].map(
+        {SOURCE_CONSOLIDADO: 1, SOURCE_SNAPSHOT: 0}
+    )
+    best = coverage.sort_values(["ano", "meses", "prioridad"], ascending=False)
+    winners = best.drop_duplicates(subset="ano", keep="first")
+    chosen = set(zip(winners["fuente"], winners["ano"]))
+    keys = list(zip(combined["fuente"], combined["ano"]))
+    keep = combined[[key in chosen for key in keys]]
+    return keep.reset_index(drop=True)
+
+
+def reconcile_fatality_sources(
+    frames: list[pd.DataFrame], labels: list[str] | None = None
+) -> pd.DataFrame:
+    """Per-year fatality counts by source for cross-validation.
+
+    Args:
+        frames: Normalized fatality DataFrames from different sources.
+        labels: Source labels, one per frame. Defaults to
+            ``consolidado_ckan`` / ``inmlcf_snapshot`` in order.
+
+    Returns:
+        A DataFrame with one row per year: total, consolidado CKAN and
+        INMLCF snapshot counts.
+    """
+    if labels is None:
+        labels = [SOURCE_CONSOLIDADO, SOURCE_SNAPSHOT][: len(frames)]
+    counts: dict[int, dict[str, int]] = {}
+    for frame, label in zip(frames, labels):
+        if frame.empty:
+            continue
+        for year, total in (
+            frame.groupby("ano")["total_fallecidos"].sum().to_dict().items()
+        ):
+            row = counts.setdefault(int(year), {})
+            row[label] = int(total)
+
+    rows = []
+    for year in sorted(counts):
+        row = counts[year]
+        rows.append(
+            {
+                "ano": year,
+                "consolidado_ckan": row.get(SOURCE_CONSOLIDADO, 0),
+                "inmlcf_snapshot": row.get(SOURCE_SNAPSHOT, 0),
+                "total": sum(row.values()),
+            }
+        )
+    return pd.DataFrame(rows, columns=["ano", "consolidado_ckan", "inmlcf_snapshot", "total"])
 
 
 def normalize_fatality_data(data: pd.DataFrame) -> pd.DataFrame:
@@ -125,6 +403,7 @@ def normalize_fatality_data(data: pd.DataFrame) -> pd.DataFrame:
     normalized["rango_edad"] = _clean_text_column(normalized["RangoEdad"])
     normalized["clase_accidente"] = _clean_text_column(normalized["ClaseAccidente"])
     normalized["hipotesis"] = _clean_text_column(normalized["Hipotesis"])
+    normalized["actor_vial"] = _clean_text_column(normalized["ActorVial"])
     normalized["total_fallecidos"] = pd.to_numeric(
         normalized["TotalRegistros"],
         errors="coerce",
@@ -140,6 +419,7 @@ def normalize_fatality_data(data: pd.DataFrame) -> pd.DataFrame:
         "rango_edad",
         "clase_accidente",
         "hipotesis",
+        "actor_vial",
         "total_fallecidos",
     ]
     normalized = normalized.dropna(subset=["ano", "mes"])
@@ -294,17 +574,4 @@ def _normalize_text(value: object) -> str:
 
 
 def _empty_fatalities() -> pd.DataFrame:
-    return pd.DataFrame(
-        columns=[
-            "ano",
-            "mes",
-            "dia_semana",
-            "rango_3h",
-            "rango_6h",
-            "sexo",
-            "rango_edad",
-            "clase_accidente",
-            "hipotesis",
-            "total_fallecidos",
-        ]
-    )
+    return pd.DataFrame(columns=NORMALIZED_COLUMNS)

@@ -7,8 +7,14 @@ geocodes every unique intersection and writes:
 - ``data/processed/accidentes_limpios.parquet`` (records + coordinates)
 - ``data/processed/geocoded_intersections.parquet`` (unique intersection
   lookup table with ``latitud``/``longitud``/``metodo``)
+- ``data/processed/fallecidos_limpios.parquet`` (merged road fatalities)
+- ``data/processed/fallecidos_reconciliados.csv`` (per-year cross-check)
+
+Run ``python scripts/build_processed_data.py --fetch`` to first download the
+official sources from datos.cali.gov.co (CKAN).
 """
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -17,14 +23,23 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.etl import normalize_accident_data, read_csv_flexible  # noqa: E402
+from src.fallecidos import (  # noqa: E402
+    SOURCE_CONSOLIDADO,
+    SOURCE_SNAPSHOT,
+    load_fatality_frames,
+    merge_fatality_sources,
+    reconcile_fatality_sources,
+)
 from src.geocode import (  # noqa: E402
     build_default_lugares,
     build_default_model,
     geocode_series,
 )
+from src import fetch as fetch_sources  # noqa: E402
 
 RAW_DIR = Path("data/raw")
 PROCESSED_DIR = Path("data/processed")
+FATALITY_DIR = Path("data/fallecidos")
 
 SOURCES = [
     ("Siniestralidad 2016-2024", RAW_DIR / "cali_siniestralidad_2016_2024.csv"),
@@ -68,8 +83,51 @@ def geocode_dataset(combined: pd.DataFrame) -> pd.DataFrame:
     return merged
 
 
+def build_fatalities() -> pd.DataFrame:
+    """Build merged fatality data and write parquet + reconciliation CSV."""
+    consolidated, snapshots = load_fatality_frames(FATALITY_DIR)
+    merged = merge_fatality_sources(
+        [consolidated, snapshots],
+        labels=[SOURCE_CONSOLIDADO, SOURCE_SNAPSHOT],
+    )
+    if merged.empty:
+        print("[fallecidos] no hay registros de mortalidad en data/fallecidos/")
+        return merged
+
+    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = PROCESSED_DIR / "fallecidos_limpios.parquet"
+    merged.to_parquet(out_path, index=False)
+    print(
+        f"[save] {out_path} ({out_path.stat().st_size/1024:.1f} KB, "
+        f"{len(merged):,} registros)"
+    )
+
+    reconciliation = reconcile_fatality_sources(
+        [consolidated, snapshots],
+        labels=[SOURCE_CONSOLIDADO, SOURCE_SNAPSHOT],
+    )
+    reconcile_path = PROCESSED_DIR / "fallecidos_reconciliados.csv"
+    reconciliation.to_csv(reconcile_path, index=False, encoding="utf-8")
+    print(f"[save] {reconcile_path} ({len(reconciliation)} años)")
+    print("=== RECONCILIACIÓN DE FALLECIDOS (por año) ===")
+    print(reconciliation.to_string(index=False))
+    return merged
+
+
 def main() -> None:
     """Run the build pipeline."""
+    parser = argparse.ArgumentParser(description="Construye los datos procesados de Cali.")
+    parser.add_argument(
+        "--fetch",
+        action="store_true",
+        help="Descargar primero las fuentes oficiales desde datos.cali.gov.co (CKAN).",
+    )
+    args = parser.parse_args()
+
+    if args.fetch:
+        print("=== DESCARGA DE FUENTES (CKAN) ===")
+        fetch_sources.fetch_all()
+
     frames = []
     stats = []
     for label, path in SOURCES:
@@ -130,6 +188,9 @@ def main() -> None:
         print("Métodos de geocodificación:", dict(combined["metodo_geo"].value_counts()))
     for label, raw_n, clean_n in stats:
         print(f"  {label}: {raw_n:,} -> {clean_n:,}")
+
+    print("\n=== MORTALIDAD VIAL ===")
+    build_fatalities()
 
 
 if __name__ == "__main__":
