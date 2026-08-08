@@ -87,3 +87,56 @@ def _known_value_counts(accidents: pd.DataFrame, column: str) -> pd.Series:
         & values.ne(".")
     ]
     return values.value_counts()
+
+
+def build_focus_insights(accidents: pd.DataFrame) -> list[str]:
+    """Build the executive summary band: fatal focus, territorial and trend.
+
+    Unlike :func:`build_insights`, this adds a severity-0: "Con fallecido"
+    concentration insight and a weekly-trend insight on top of the
+    territorial one. Returns an empty list when there is no data.
+    """
+    if accidents.empty:
+        return []
+
+    insights = [
+        _fatal_concentration(accidents),
+        _dominant_comuna(accidents),
+        _weekly_trend_insight(accidents),
+    ]
+    return [insight for insight in insights if insight][:3]
+
+
+def _fatal_concentration(accidents: pd.DataFrame) -> str:
+    if "gravedad" not in accidents.columns:
+        return ""
+    try:
+        from src.metrics import fatal_mask
+    except ImportError:  # pragma: no cover - defensive fallback
+        return ""
+
+    fatal = int(fatal_mask(accidents).sum())
+    if fatal == 0:
+        return "En el período filtrado no se registraron siniestros con fallecido."
+
+    total = len(accidents)
+    share = fatal / total * 100
+    return (
+        f"{fatal:,} siniestros con fallecido en el período filtrado, "
+        f"equivalentes al {_format_percentage(share)} del total."
+    )
+
+
+def _weekly_trend_insight(accidents: pd.DataFrame) -> str:
+    try:
+        from src.metrics import build_kpis
+    except ImportError:  # pragma: no cover - defensive fallback
+        return ""
+
+    kpis = build_kpis(accidents)
+    if kpis.weekly_trend == "Sin tendencia":
+        return "No hay suficientes días de observación para definir una tendencia."
+    direction = {"Estable": "se mantiene estable", "Al alza": "va en aumento", "A la baja": "va a la baja"}.get(
+        kpis.weekly_trend, kpis.weekly_trend.lower()
+    )
+    return f"La tendencia reciente {direction} ({kpis.weekly_trend_delta:+.0f}% vs. período previo)."

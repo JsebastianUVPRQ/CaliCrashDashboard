@@ -259,3 +259,88 @@ def _hour_series(hours: pd.Series) -> pd.Series:
         numeric = pd.to_numeric(hours[missing].astype(str).str.strip(), errors="coerce")
         result.loc[missing] = numeric % 24
     return result
+
+
+# ---------------------------------------------------------------------------
+# Canonical severity handling
+# ---------------------------------------------------------------------------
+FATAL_SEVERITY_CANONICAL = "Con fallecido"
+INJURY_SEVERITY_CANONICAL = "Con lesionado"
+DAMAGE_SEVERITY_CANONICAL = "Solo daños"
+NEGATIVE_SEVERITY_CANONICAL = "Negativo"
+
+
+def canonical_severity(series: pd.Series) -> pd.Series:
+    """Map raw severity labels (fatal variants, 'Herido', 'Fatal', ...) to a
+    small canonical set so charts and filters never depend on typos."""
+    lowered = series.astype("string").str.strip().str.lower()
+    result = pd.Series(pd.NA, index=series.index, dtype="string")
+    result[lowered.str.contains("fallecido", na=False)
+           | lowered.str.contains("fatal", na=False)
+           | lowered.str.contains("muert", na=False)] = FATAL_SEVERITY_CANONICAL
+    result[lowered.str.contains("lesion", na=False)
+           | lowered.str.contains("herid", na=False)] = INJURY_SEVERITY_CANONICAL
+    result[lowered.str.contains("daño", na=False)
+           | lowered.str.contains("dano", na=False)] = DAMAGE_SEVERITY_CANONICAL
+    result[lowered.str.contains("negativo", na=False)] = NEGATIVE_SEVERITY_CANONICAL
+    result[lowered.isin(["", ".", "nan", "sin dato", "none", "sin información"])] = pd.NA
+    return result
+
+
+def severity_counts(accidents: pd.DataFrame) -> pd.DataFrame:
+    """Count accidents by canonical severity in a fixed order."""
+    columns = ["gravedad", "accidentes"]
+    if accidents.empty or "gravedad" not in accidents.columns:
+        return pd.DataFrame(columns=columns)
+
+    canonical = canonical_severity(accidents["gravedad"])
+    counts = canonical.dropna().value_counts().rename_axis("gravedad").reset_index(name="accidentes")
+
+    order = {
+        NEGATIVE_SEVERITY_CANONICAL: 0,
+        DAMAGE_SEVERITY_CANONICAL: 1,
+        INJURY_SEVERITY_CANONICAL: 2,
+        FATAL_SEVERITY_CANONICAL: 3,
+    }
+    counts["_order"] = counts["gravedad"].map(lambda value: order.get(value, 99))
+    return counts.sort_values("_order").drop(columns="_order").reset_index(drop=True)[columns]
+
+
+def fatal_injury_counts(accidents: pd.DataFrame) -> tuple[int, int, int]:
+    """Return ``(fatal, lesionados, otros)`` canonical severity counts."""
+    if accidents.empty or "gravedad" not in accidents.columns:
+        return 0, 0, 0
+    fatal = int(fatal_mask(accidents).sum())
+    injured = int(injury_mask(accidents).sum())
+    return fatal, injured, max(len(accidents) - fatal - injured, 0)
+
+
+def fatal_mask(accidents: pd.DataFrame) -> pd.Series:
+    """Boolean mask of records whose canonical severity is fatal."""
+    if "gravedad" not in accidents.columns:
+        return pd.Series(False, index=accidents.index)
+    return canonical_severity(accidents["gravedad"]).eq(FATAL_SEVERITY_CANONICAL)
+
+
+def injury_mask(accidents: pd.DataFrame) -> pd.Series:
+    """Boolean mask of records whose canonical severity involves injuries."""
+    if "gravedad" not in accidents.columns:
+        return pd.Series(False, index=accidents.index)
+    return canonical_severity(accidents["gravedad"]).eq(INJURY_SEVERITY_CANONICAL)
+
+
+def severity_filter_values(accidents: pd.DataFrame, kind: str) -> list[str]:
+    """Raw ``gravedad`` values matching a canonical kind for sidebar filters.
+
+    ``kind`` is one of ``"fatal"``, ``"lesionado"``, ``"daños"``.
+    """
+    if "gravedad" not in accidents.columns:
+        return []
+    canonical = canonical_severity(accidents["gravedad"]).astype("string")
+    target = {
+        "fatal": FATAL_SEVERITY_CANONICAL,
+        "lesionado": INJURY_SEVERITY_CANONICAL,
+        "daños": DAMAGE_SEVERITY_CANONICAL,
+    }[kind]
+    raw_values = accidents.loc[canonical.eq(target), "gravedad"].astype(str).unique().tolist()
+    return sorted(raw_values)

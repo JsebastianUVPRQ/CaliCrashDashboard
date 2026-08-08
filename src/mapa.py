@@ -8,13 +8,26 @@ from folium.plugins import HeatMap
 from folium.plugins import MarkerCluster
 
 from src.config import CALI_CENTER
+from src.metrics import fatal_mask
+from src.theme import MUTED, SEVERITY_RAMP_ORDER, severity_color
 
 
 def build_accident_map(
     accidents: pd.DataFrame,
+    *,
     show_heatmap: bool = True,
+    heat_scope: str = "all",
 ) -> folium.Map:
-    """Build an interactive map centered in Cali with accident markers."""
+    """Build an interactive map centered in Cali with accident markers.
+
+    Args:
+        accidents: Normalized accident records with ``latitud``/``longitud``.
+        show_heatmap: Render the density heat layer.
+        heat_scope: ``"all"`` or ``"fatal"`` (heat over fatal records only).
+
+    Returns:
+        A Folium map with a severity-colored marker cluster and a legend.
+    """
     crash_map = folium.Map(
         location=CALI_CENTER,
         zoom_start=12,
@@ -32,7 +45,12 @@ def build_accident_map(
         return crash_map
 
     if show_heatmap:
-        heat_points = geocoded_accidents[["latitud", "longitud"]].values.tolist()
+        if heat_scope == "fatal":
+            heat_points = geocoded_accidents.loc[
+                fatal_mask(geocoded_accidents), ["latitud", "longitud"]
+            ].values.tolist()
+        else:
+            heat_points = geocoded_accidents[["latitud", "longitud"]].values.tolist()
         if heat_points:
             HeatMap(
                 heat_points,
@@ -49,7 +67,7 @@ def build_accident_map(
             ).add_to(crash_map)
 
     marker_cluster = MarkerCluster(name="Accidentes").add_to(crash_map)
-    
+
     # Sample markers if dataset is large to prevent browser freeze/crash
     marker_data = geocoded_accidents
     if len(marker_data) > 1500:
@@ -73,13 +91,41 @@ def build_accident_map(
             color="#0f172a",
             weight=1,
             fill=True,
-            fill_color="#f59e0b",
+            fill_color=severity_color(accident.gravedad),
             fill_opacity=0.84,
             popup=popup,
         ).add_to(marker_cluster)
 
     folium.LayerControl().add_to(crash_map)
+    _add_severity_legend(crash_map)
     return crash_map
+
+
+def _add_severity_legend(crash_map: folium.Map) -> None:
+    """Inject a compact severity legend into the map corner."""
+    items = "".join(
+        f'<li><span style="background:{severity_color(label)}"></span>{escape(label)}</li>'
+        for label in SEVERITY_RAMP_ORDER
+    )
+    html = f"""
+    <div style="
+        position: absolute; left: 10px; bottom: 24px; z-index: 800;
+        background: rgba(15, 23, 42, 0.94);
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        border-radius: 8px; padding: 8px 12px;
+        font-family: Inter, Segoe UI, sans-serif; font-size: 11px;
+        color: #e2e8f0; box-shadow: 0 10px 24px rgba(0,0,0,.35);
+    ">
+        <div style="font-weight:700; margin-bottom:5px; color:#94a3b8;
+                    text-transform:uppercase; font-size:10px; letter-spacing:.06em;">
+            Gravedad
+        </div>
+        <ul style="list-style:none; margin:0; padding:0;">
+            {items}
+        </ul>
+    </div>
+    """
+    crash_map.get_root().html.add_child(folium.Element(html))
 
 
 def _add_missing_coordinates_notice(crash_map: folium.Map, total_records: int) -> None:
