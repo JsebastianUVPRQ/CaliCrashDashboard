@@ -30,11 +30,18 @@
 ## 🧪 Pruebas
 - Añadir tests unitarios para transformaciones de datos y agregaciones en `tests/`.
 - Ejecutar `pytest` antes de hacer commit si existen tests.
-- El dashboard no se testea automáticamente, pero validar con `streamlit run app.py` localmente.
+- El dashboard no se testea automáticamente, pero validar con `streamlit run app.py` localmente o con `streamlit.testing.v1.AppTest.from_file("app.py")` para un smoke test completo (secciones + presets).
 
 ## 📦 Dependencias
-- Mantener `requirements.txt` actualizado con versiones fijas (`pandas==2.1.0`).
+- Mantener `requirements.txt` actualizado con versiones fijas (`pandas==2.3.3`).
+- Incluir SIEMPRE `pyarrow` (el dataset principal se lee como `.parquet` desde `src/config.py`) y `numpy`; sin ellos el dashboard falla en Streamlit Cloud.
 - No incluir librerías pesadas innecesarias (como TensorFlow) a menos que se justifique.
+
+## 🎨 Diseño del dashboard
+- El sistema de diseño vive en `src/theme.py`: paleta semántica (rampa fija de gravedad `Negativo → Solo daños → Con lesionado → Con fallecido`), template Plotly oscuro, formateadores y todo el CSS (`DASHBOARD_CSS`).
+- Los gráficos se construyen con `src/charts.py` (constructores tipados) y SIEMPRE pasan por `theme.style_figure`/`style_bars`; no hardcodear colores ni estilos por figura.
+- `src/dashboard.py` delega cada capítulo del relato a `src/dashboard_sections/` (kpis, territorial, temporal, composicion, fatal, mortalidad, riesgo, detalle). La severidad canónica y sus rampas se gestionan en `src/metrics.py` (`canonical_severity`, `severity_counts`, `fatal_mask`).
+- La sección de mortalidad (`mortalidad.py`) muestra SOLO resultados finales (personas fallecidas); no exponer reconciliación de fuentes ni procesos ETL en la UI.
 
 ## 🗺 Datos geoespaciales
 - Usar `geopandas` y archivos shapefile de comunas de Cali (descargar de IDESC o repositorio auxiliar).

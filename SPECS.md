@@ -33,7 +33,10 @@ graph TD
 ### Módulos actuales
 - `app.py`: entrada Streamlit ligera.
 - `src/config.py`: configuración compartida de rutas, centro del mapa y orden de categorías.
-- `src/dashboard.py`: composición de la interfaz, carga automática desde `data/processed/`, filtros, KPIs, visualizaciones y descarga.
+- `src/theme.py`: sistema de diseño central — paleta semántica (rampa fija de gravedad: Negativo → Solo daños → Con lesionado → Con fallecido), template Plotly oscuro compartido, formateadores y todo el CSS del dashboard.
+- `src/charts.py`: constructores reutilizables de gráficos (`bar_h`, `stacked_bar_h`, `line_trend`, `combo_bar_line`, `heat_yearly_monthly`, `risk_matrix`); toda figura pasa por `src.theme`.
+- `src/dashboard.py`: orquestador streamlit (carga de datos, sidebar con presets de vista rápida, navegación por anclas y composición de secciones); delega el renderizado a `src/dashboard_sections/`.
+- `src/dashboard_sections/`: una sección por capítulo del relato —— `ui.py` (helpers compartidos), `kpis.py` (resumen ejecutivo + insights), `territorial.py` (cruces peligrosos + mapa), `temporal.py` (tendencia diaria, hora, día de semana, mes), `composicion.py` (vehículo × gravedad), `fatal.py` (siniestros con fallecido), `mortalidad.py` (vidas perdidas), `riesgo.py` (matriz de riesgo Poisson), `detalle.py` (control de calidad).
 - `src/etl.py`: carga CSV desde `data/processed/accidentes_limpios.csv` o `data/raw/accidentes.csv`, normaliza columnas (incluyendo `tipo_vehiculo`) y deriva `franja_horaria`, `dia_semana` y `mes`.
 - `src/fallecidos.py`: carga los CSV de `data/fallecidos` (consolidado CKAN y snapshots INMLCF), normaliza ambos formatos al contrato `ano/mes/dia_semana/rango_3h/rango_6h/sexo/rango_edad/clase_accidente/hipotesis/actor_vial/total_fallecidos` y los fusiona por año; `merge_fatality_sources` elige por año la fuente con más meses documentados (empate → consolidado CKAN) y `reconcile_fatality_sources` produce la tabla de validación cruzada por año.
 - `src/fetch.py`: descarga idempotente de los tres recursos CKAN con manifiesto de linaje SHA-256 (`data/raw/manifiesto_linaje.json`); `fetch_source` omite archivos sin cambios y `fetch_all` procesa todas las fuentes.
@@ -41,11 +44,11 @@ graph TD
 - `scripts/build_processed_data.py`: ETL que limpia las fuentes crudas, geocodifica las intersecciones y escribe `accidentes_limpios.parquet`, `geocoded_intersections.parquet`, `fallecidos_limpios.parquet` y `fallecidos_reconciliados.csv`. Con `--fetch` descarga primero las fuentes CKAN.
 - `scripts/fetch_sources.py`: CLI que descarga/actualiza las tres fuentes oficiales (flag `--force` para forzar re-descarga).
 - `notebooks/fetch_anchors.py`: descarga one-shot de las anclas OSM (`data/processed/anclas_osm.csv`).
-- `src/insights.py`: narrativa automática de concentración por comuna, franja horaria y gravedad.
-- `src/metrics.py`: filtros, KPIs y agregaciones por comuna, franja horaria, tipo de vehículo y vehículo × gravedad.
-- `src/mapa.py`: mapa Folium centrado en Cali con marcadores agrupados.
+- `src/insights.py`: narrativa automática de concentración por comuna, franja horaria y gravedad; `build_focus_insights` genera el resumen ejecutivo (concentración fatal, territorio, tendencia).
+- `src/metrics.py`: filtros, KPIs, agregaciones por comuna, franja horaria, tipo de vehículo, vehículo × gravedad y severidad canónica (`canonical_severity`, `severity_counts`, `fatal_mask`, `severity_filter_values`).
+- `src/mapa.py`: mapa Folium centrado en Cali con capa de calor (global o solo fatal), clusters de marcadores coloreados por gravedad y leyenda integrada.
 - `src/modelo.py`: modelo base de frecuencia esperada con promedios históricos por comuna y franja horaria.
-- `tests/`: pruebas unitarias para normalización, filtros, agregaciones y frecuencia esperada.
+- `tests/`: pruebas unitarias para normalización, filtros, agregaciones, severidad canónica, insights y frecuencia esperada.
 
 ## 4. Funcionalidades del dashboard
 1. **Mapa de calor/ clusters** con accidentes agregados por comuna o intersección.
@@ -61,10 +64,13 @@ Estado implementado:
 - KPIs compactos de total, comuna crítica, hora crítica y tendencia semanal.
 - **Sección de cruces peligrosos** con ranking de las 15 intersecciones más críticas, desglose por gravedad y mapa de concentración.
 - **Sección de composición** por tipo de vehículo, vehículo × gravedad, tipo de siniestro y distribución de gravedad.
-- Mapa Folium con capa de calor opcional, clusters de marcadores y popups compactos.
+- Mapa Folium con capa de calor opcional (global o solo fatal), clusters de marcadores coloreados por gravedad y leyenda integrada.
 - Panel lateral derecho con insights automáticos, top comunas y franja horaria.
 - Gráficos narrativos de accidentes por hora del día y tendencia diaria.
-- Sección colapsable de mortalidad vial con KPIs, serie anual, rangos horarios y clase de accidente.
+- **Fatalidad (capítulo especial)** con métricas de registros con fallecido por año, hora y comuna.
+- **Sección "Vidas perdidas"** de mortalidad vial: KPIs, serie anual, estacionalidad año × mes, franjas horarias, clase de siniestro y perfil de las personas fallecidas (sexo, rango de edad, condición en la vía); resultados finales, sin desglose interno de fuentes.
+- **Sección de riesgo** con matriz comuna × franja horaria de frecuencia diaria esperada (modelo base) y tabla descargable.
+- Presets de vista rápida en la barra lateral: todo / solo fallecidos / solo lesionados / solo daños; restablecimiento de filtros y navegación por anclas.
 - Tabla técnica colapsada de frecuencia diaria esperada por comuna y franja horaria.
 
 ## 5. Procesamiento de datos

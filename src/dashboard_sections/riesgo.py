@@ -4,7 +4,6 @@ import pandas as pd
 import streamlit as st
 
 from src.charts import risk_matrix
-from src.config import RISK_THRESHOLDS
 from src.dashboard_sections.ui import render_empty_state, render_section_header, render_source_note
 from src.modelo import estimate_frequency
 
@@ -40,7 +39,7 @@ def render_riesgo(accidents: pd.DataFrame) -> None:
     fig.update_layout(xaxis_title="Franja horaria", yaxis_title="Comuna")
     st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
-    legend_col, note_col = st.columns((1, 2), gap="large")
+    legend_col, _note_col = st.columns((1, 2), gap="large")
     with legend_col:
         st.markdown(
             f"""
@@ -52,8 +51,6 @@ def render_riesgo(accidents: pd.DataFrame) -> None:
             """,
             unsafe_allow_html=True,
         )
-    with note_col:
-        pass
 
     with st.expander("Ver tabla de frecuencias por comuna y franja", expanded=False):
         st.dataframe(

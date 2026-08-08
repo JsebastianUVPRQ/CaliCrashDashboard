@@ -7,10 +7,10 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.charts import bar_h, combo_bar_line, line_trend
+from src.charts import bar_h, combo_bar_line
 from src.dashboard_sections.ui import render_section_header
 from src.metrics import aggregate_by_hour, aggregate_by_weekday
-from src.theme import ACCENT, DATA, MUTED, PANEL, TEXT, style_figure
+from src.theme import ACCENT, DATA
 
 
 MONTH_ABBR_ES = {

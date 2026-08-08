@@ -14,8 +14,6 @@ from src.theme import (
     ACCENT,
     GRID_X,
     MUTED,
-    PANEL,
-    RISK,
     RISK_MATRIX_SCALE,
     TRANSPARENT,
     severity_color,
@@ -110,32 +108,6 @@ def _hex_to_rgba(color: str, alpha: float) -> str:
             f"{int(color[5:7], 16)},{alpha})"
         )
     return color
-
-
-def line_multi(
-    data: pd.DataFrame,
-    *,
-    x: str,
-    series_col: str,
-    y: str,
-    height: int = 300,
-) -> go.Figure:
-    """Multi-series line chart from long data with markers."""
-    fig = go.Figure()
-    for label, subset in data.groupby(series_col, sort=False, dropna=False):
-        color = severity_color(label)
-        fig.add_trace(
-            go.Scatter(
-                x=subset[x],
-                y=subset[y],
-                name=str(label),
-                mode="lines+markers",
-                line={"color": color, "width": 2.4},
-                marker={"color": color, "size": 6},
-            )
-        )
-    fig.update_layout(legend={"orientation": "h", "y": -0.18, "x": 0})
-    return style_figure(fig, height=height, showlegend=True)
 
 
 def combo_bar_line(
@@ -243,26 +215,3 @@ def risk_matrix(
         yaxis={"autorange": "reversed"},
     )
     return fig
-
-
-def donut(
-    data: pd.DataFrame,
-    *,
-    names: str,
-    values: str,
-    colors: dict[str, str] | None = None,
-    height: int = 280,
-) -> go.Figure:
-    """Donut chart with a semantic color mapping."""
-    fig = go.Figure(
-        go.Pie(
-            labels=data[names],
-            values=data[values],
-            hole=0.5,
-            marker={"colors": [colors.get(str(label)) if colors else None for label in data[names]]},
-            textinfo="percent",
-            textfont={"size": 11},
-            hovertemplate="%{label}: %{value:,} (%{percent})<extra></extra>",
-        )
-    )
-    return style_figure(fig, height=height, showlegend=True)

@@ -3,7 +3,7 @@
 import pandas as pd
 import streamlit as st
 
-from src.charts import bar_h, line_trend
+from src.charts import bar_h
 from src.dashboard_sections.ui import render_empty_state, render_section_header
 from src.metrics import aggregate_by_hour, fatal_mask
 from src.theme import RISK
